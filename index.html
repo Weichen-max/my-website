@@ -1,14 +1,13 @@
 <!-- Chosen Palette: Slate & Indigo (Professional, Compact, Tech-focused) -->
-<!-- Application Structure Plan: To optimize for Google Sites embedding, the layout has been compressed into a dashboard-style interface. The Hero section is now a minimal header. The 5-P framework is condensed into a horizontal status bar. The Magic Fill AI feature is integrated as a top-level action bar directly above the workspace. This maximizes vertical efficiency, ensuring the primary 'Generator' is visible with minimal scrolling. -->
-<!-- Visualization & Content Choices: 1. 5-P Ribbon -> Goal: Inform -> Viz: Compact horizontal flex items -> Justification: Saves 300px+ of vertical space. 2. Integrated AI Bar -> Goal: Actionable Entry -> Viz: Simple flex input group -> Justification: Places the smart feature where users naturally start. 3. Dense Generator -> Goal: Utility -> Viz: Side-by-side grid with reduced padding -> Justification: Ideal for desktop and tablet views within iframes. Confirming NO SVG/Mermaid. -->
-<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+<!-- Application Structure Plan: Optimized for Zhipu AI (GLM-4) API integration. -->
+<!-- Visualization & Content Choices: 1. Dashboard layout for Google Sites. 2. Zhipu AI API logic replacement. -->
 
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>脚本自动化 Prompt 交互生成器 (Compact)</title>
+    <title>脚本自动化 Prompt 生成器 (智谱 AI 版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -28,16 +27,19 @@
 <body class="text-slate-800 antialiased min-h-screen">
 
     <!-- Compact Header -->
-    <header class="bg-indigo-700 text-white py-6 shadow-sm">
-        <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-2">
+    <header class="bg-indigo-700 text-white py-4 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-                    <span>🤖</span> 脚本自动化 Prompt 生成器
+                    <span>🚀</span> 脚本自动化 Prompt 生成器
                 </h1>
-                <p class="text-xs text-indigo-100 opacity-80 mt-0.5">将业务需求转化为专业脚本指令 (GAS / Python)</p>
+                <p class="text-[10px] text-indigo-100 opacity-80 mt-0.5">适配 智谱 AI GLM-4 · 业务需求转脚本指令</p>
             </div>
-            <div class="text-[10px] uppercase tracking-widest bg-indigo-800 px-2 py-1 rounded border border-indigo-500/50">
-                Google Sites Optimized Edition
+            <!-- API Key Config Area -->
+            <div class="flex items-center gap-2 bg-indigo-800/50 p-1.5 rounded-lg border border-indigo-500/30">
+                <span class="text-[10px] font-bold uppercase text-indigo-200 ml-1">Zhipu Key:</span>
+                <input type="password" id="userApiKey" placeholder="输入 智谱 API Key" class="bg-indigo-900/50 border-none text-[10px] rounded px-2 py-1 w-40 focus:ring-1 focus:ring-indigo-400 text-white outline-none">
+                <div id="keyStatus" class="w-2 h-2 rounded-full bg-red-400" title="未检测到有效 Key"></div>
             </div>
         </div>
     </header>
@@ -48,7 +50,7 @@
         <section class="bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-200">
             <div class="flex flex-wrap justify-between items-center gap-4">
                 <div class="flex items-center gap-2">
-                    <span class="text-indigo-600 font-bold text-sm">5-P 结构:</span>
+                    <span class="text-indigo-600 font-bold text-sm">5-P 指令框架:</span>
                 </div>
                 <div class="flex flex-wrap gap-4 text-[11px] font-medium text-slate-500 uppercase">
                     <span class="flex items-center gap-1"><span class="bg-blue-100 text-blue-600 w-5 h-5 flex items-center justify-center rounded-full">1</span> Role 角色</span>
@@ -69,7 +71,7 @@
                 </div>
                 <input type="text" id="aiInput" placeholder="输入一句话需求, 如: '每天抓取带财务关键词的邮件附件到表格'..." class="flex-grow shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full text-sm border-slate-300 rounded-md p-2 border">
                 <button id="magicFillBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-bold transition-all shadow-sm flex-shrink-0">
-                    解析并填充
+                    智谱解析并填充
                 </button>
             </div>
 
@@ -183,7 +185,7 @@
                 <div class="w-full lg:w-7/12 p-5 flex flex-col bg-[#1e293b] min-h-[400px]">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="font-bold text-sm text-white flex items-center gap-2">
-                            <span>✨</span> 生成结果
+                            <span>✨</span> 生成结果 (智谱驱动)
                         </h3>
                         <div class="flex gap-2">
                             <button id="optimizeBtn" title="优化指令" class="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded text-xs border border-indigo-400">
@@ -200,7 +202,7 @@
                     <div class="flex-grow relative">
                         <div id="loadingOverlay" class="absolute inset-0 bg-[#0f172a]/80 z-20 hidden flex-col items-center justify-center rounded-lg">
                             <div class="loading-shimmer w-10 h-10 rounded-full mb-2"></div>
-                            <p class="text-indigo-300 text-xs font-bold animate-pulse">处理中...</p>
+                            <p class="text-indigo-300 text-xs font-bold animate-pulse">智谱 AI 思考中...</p>
                         </div>
                         <textarea id="outputArea" readonly class="w-full h-full bg-[#0f172a] text-slate-300 p-3 rounded border border-slate-600 font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 absolute inset-0"></textarea>
                     </div>
@@ -216,52 +218,98 @@
     <div id="codeModal" class="fixed inset-0 bg-black/70 z-[100] hidden flex items-center justify-center p-4">
         <div class="bg-[#1e293b] w-full max-w-2xl max-h-[70vh] rounded-xl shadow-2xl flex flex-col border border-slate-600">
             <div class="p-3 border-b border-slate-600 flex justify-between items-center">
-                <h3 class="text-white font-bold text-sm">✨ GAS 代码预览</h3>
+                <h3 class="text-white font-bold text-sm">✨ 智谱生成 GAS 预览</h3>
                 <button id="closeModal" class="text-slate-400 hover:text-white transition-colors text-xl">×</button>
             </div>
             <div class="p-4 overflow-auto flex-grow bg-[#0f172a]">
                 <pre id="codeContent" class="text-emerald-400 font-mono text-[10px] leading-tight whitespace-pre-wrap"></pre>
             </div>
             <div class="p-3 border-t border-slate-600 flex justify-between items-center">
-                <span class="text-[10px] text-slate-400 italic">部署前请在脚本编辑器中测试权限。</span>
-                <button id="copyCode" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold">复制</button>
+                <span class="text-[10px] text-slate-400 italic">部署至 Google Apps Script 后请务必测试。</span>
+                <button id="copyCode" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold">复制代码</button>
             </div>
         </div>
     </div>
 
     <footer class="text-slate-400 py-6 text-center text-[10px] opacity-70">
-        <p>Powered by Gemini AI Engine · Smart Workspace</p>
+        <p>Powered by Zhipu AI (GLM-4) · Smart Automation Workspace</p>
     </footer>
 
     <script>
-        const apiKey = ""; // The execution environment provides the key at runtime.
+        // API Configuration for Zhipu AI
+        let currentKey = localStorage.getItem('zhipu_api_key') || "";
 
-        async function callGemini(prompt, systemInstruction = "", responseMimeType = "text/plain", schema = null) {
-            const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=" + apiKey;
+        function updateKeyStatus() {
+            const statusDot = document.getElementById('keyStatus');
+            if (currentKey && currentKey.length > 10) {
+                statusDot.classList.replace('bg-red-400', 'bg-green-400');
+                statusDot.title = "已检测到有效 Zhipu Key";
+            } else {
+                statusDot.classList.replace('bg-green-400', 'bg-red-400');
+                statusDot.title = "未检测到有效 Key，请在上方输入";
+            }
+        }
+
+        async function callZhipu(prompt, systemInstruction = "", isJson = false) {
+            if (!currentKey) {
+                showToast("错误: 请先在页眉输入 智谱 AI API Key", "bg-red-500");
+                throw new Error("Missing API Key");
+            }
+
+            const endpoint = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
+            
+            const messages = [];
+            if (systemInstruction) {
+                messages.push({ role: "system", content: systemInstruction });
+            }
+            messages.push({ role: "user", content: prompt });
+
             const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: systemInstruction }] },
-                generationConfig: { responseMimeType: responseMimeType }
+                model: "glm-4-flash",
+                messages: messages,
+                temperature: 0.7,
+                top_p: 0.9,
+                ...(isJson ? { response_format: { type: "json_object" } } : {})
             };
-            if (schema) payload.generationConfig.responseSchema = schema;
 
             let delay = 1000;
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 3; i++) {
                 try {
                     const response = await fetch(endpoint, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${currentKey}`
+                        },
                         body: JSON.stringify(payload)
                     });
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    if (!response.ok) {
+                        const errBody = await response.json();
+                        throw new Error(errBody.error?.message || `HTTP ${response.status}`);
+                    }
                     const result = await response.json();
-                    return result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    return result.choices[0].message.content;
                 } catch (err) {
-                    if (i === 4) throw err;
+                    if (i === 2) {
+                        showToast(`智谱 API 错误: ${err.message}`, "bg-red-500");
+                        throw err;
+                    }
                     await new Promise(resolve => setTimeout(resolve, delay));
                     delay *= 2;
                 }
             }
+        }
+
+        function showToast(msg, colorClass = "bg-green-500") {
+            const toast = document.getElementById('copyToast');
+            const originalClass = toast.className;
+            toast.innerText = msg;
+            toast.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white px-4 py-2 rounded text-xs shadow-lg transition-opacity duration-300 z-30 ${colorClass}`;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => { toast.className = originalClass; }, 300);
+            }, 3000);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -277,6 +325,18 @@
             const codeModal = document.getElementById('codeModal');
             const codeContent = document.getElementById('codeContent');
             const aiInput = document.getElementById('aiInput');
+            const userApiKeyInput = document.getElementById('userApiKey');
+
+            // Init Key UI
+            userApiKeyInput.value = currentKey;
+            updateKeyStatus();
+
+            userApiKeyInput.addEventListener('change', (e) => {
+                currentKey = e.target.value.trim();
+                localStorage.setItem('zhipu_api_key', currentKey);
+                updateKeyStatus();
+                showToast("智谱 Key 已保存");
+            });
 
             function updateVisibility() {
                 if (templateTypeSelect.value === 'general') {
@@ -337,31 +397,35 @@
                 const userReq = aiInput.value.trim();
                 if (!userReq) return;
                 loadingOverlay.classList.remove('hidden');
-                const schema = {
-                    type: "OBJECT",
-                    properties: {
-                        type: { type: "STRING", enum: ["general", "advanced"] },
-                        gTrigger: { type: "STRING" }, gKeyword: { type: "STRING" }, gFormat: { type: "STRING" },
-                        gSheet: { type: "STRING" }, gMatchCol: { type: "STRING" }, gDict: { type: "STRING" },
-                        gPrefix: { type: "STRING" }, gCC: { type: "STRING" }, aSource: { type: "STRING" },
-                        aTrimCol: { type: "STRING" }, aFilterStatus: { type: "STRING" }, aDays: { type: "NUMBER" },
-                        aAggCol: { type: "STRING" }, aTime: { type: "STRING" }
-                    }
-                };
+                
+                const sysInstruction = `你是一个需求解析专家。请将用户的自然语言需求映射到以下 JSON 结构中。
+                JSON 结构：{
+                    "type": "general" 或 "advanced",
+                    "gTrigger": "...", "gKeyword": "...", "gFormat": "...", "gSheet": "...", "gMatchCol": "...", "gDict": "...", "gPrefix": "...", "gCC": "...",
+                    "aSource": "...", "aTrimCol": "...", "aFilterStatus": "...", "aDays": 30, "aAggCol": "...", "aTime": "..."
+                }
+                只返回纯 JSON，不要有任何 Markdown 包裹。`;
+
                 try {
-                    const result = await callGemini(userReq, "解析需求并映射到配置字段。", "application/json", schema);
+                    const result = await callZhipu(userReq, sysInstruction, true);
                     const data = JSON.parse(result);
                     if (data.type) templateTypeSelect.value = data.type;
                     updateVisibility();
-                    Object.keys(data).forEach(k => { if (document.getElementById(k)) document.getElementById(k).value = data[k]; });
+                    Object.keys(data).forEach(k => { 
+                        const el = document.getElementById(k);
+                        if (el) el.value = data[k]; 
+                    });
                     generatePrompt();
-                } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
+                } catch (e) { 
+                    console.error(e); 
+                    showToast("解析失败，请检查输入或 Key", "bg-red-500");
+                } finally { loadingOverlay.classList.add('hidden'); }
             });
 
             optimizeBtn.addEventListener('click', async () => {
                 loadingOverlay.classList.remove('hidden');
                 try {
-                    const res = await callGemini(outputArea.value, "润色并优化此 Prompt，使其更专业，保持 5-P 结构。");
+                    const res = await callZhipu(outputArea.value, "你是一个提示词专家。润色并优化此脚本开发 Prompt，使其更专业，保持 5-P 结构（角色、背景、输入、逻辑、输出）。");
                     outputArea.value = res;
                 } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
             });
@@ -369,26 +433,28 @@
             previewCodeBtn.addEventListener('click', async () => {
                 loadingOverlay.classList.remove('hidden');
                 try {
-                    const code = await callGemini(outputArea.value, "根据指令生成一份完整的 Google Apps Script 示例代码。");
-                    codeContent.textContent = code;
+                    const res = await callZhipu(outputArea.value, "你是一个 Google Apps Script 开发专家。根据我的指令生成一份完整的、可运行的代码。包含必要的注释说明。");
+                    codeContent.textContent = res;
                     codeModal.classList.remove('hidden');
                 } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
             });
 
             templateTypeSelect.addEventListener('change', updateVisibility);
             document.querySelectorAll('#promptForm input, #promptForm select').forEach(i => i.addEventListener('input', generatePrompt));
+            
             copyBtn.onclick = () => {
-                outputArea.select(); document.execCommand('copy');
-                const toast = document.getElementById('copyToast'); toast.classList.remove('opacity-0');
-                setTimeout(() => toast.classList.add('opacity-0'), 2000);
+                outputArea.select(); 
+                document.execCommand('copy');
+                showToast("指令已复制");
             };
+
             document.getElementById('closeModal').onclick = () => codeModal.classList.add('hidden');
             document.getElementById('copyCode').onclick = () => {
                 const dummy = document.createElement("textarea"); document.body.appendChild(dummy);
                 dummy.value = codeContent.textContent; dummy.select(); document.execCommand("copy");
                 document.body.removeChild(dummy);
                 document.getElementById('copyCode').innerText = "已复制";
-                setTimeout(() => document.getElementById('copyCode').innerText = "复制", 2000);
+                setTimeout(() => document.getElementById('copyCode').innerText = "复制代码", 2000);
             };
 
             updateVisibility();
