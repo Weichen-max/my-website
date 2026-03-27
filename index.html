@@ -1,518 +1,398 @@
+<!-- Chosen Palette: Slate & Indigo (Professional, Compact, Tech-focused) -->
+<!-- Application Structure Plan: To optimize for Google Sites embedding, the layout has been compressed into a dashboard-style interface. The Hero section is now a minimal header. The 5-P framework is condensed into a horizontal status bar. The Magic Fill AI feature is integrated as a top-level action bar directly above the workspace. This maximizes vertical efficiency, ensuring the primary 'Generator' is visible with minimal scrolling. -->
+<!-- Visualization & Content Choices: 1. 5-P Ribbon -> Goal: Inform -> Viz: Compact horizontal flex items -> Justification: Saves 300px+ of vertical space. 2. Integrated AI Bar -> Goal: Actionable Entry -> Viz: Simple flex input group -> Justification: Places the smart feature where users naturally start. 3. Dense Generator -> Goal: Utility -> Viz: Side-by-side grid with reduced padding -> Justification: Ideal for desktop and tablet views within iframes. Confirming NO SVG/Mermaid. -->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文件内容提取与匹配工具</title>
+    <title>脚本自动化 Prompt 交互生成器 (Compact)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 加载 Inter 字体 -->
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f7f9fb;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .compact-input { padding: 0.4rem 0.75rem; font-size: 0.875rem; }
+        .loading-shimmer {
+            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
         }
-        .file-upload-area {
-            border: 2px dashed #cbd5e1; /* slate-300 */
-            transition: all 0.2s;
-        }
-        .file-upload-area:hover {
-            border-color: #6366f1; /* indigo-500 */
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
-        }
-        /* 简单的加载动画 */
-        .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            border-left-color: #6366f1;
-            animation: spin 1s ease infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
     </style>
-    <!-- 加载 XLSX 库用于读取 Excel 文件 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- 加载 PDF.js 核心库 (客户端 PDF 文本提取) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.js"></script>
 </head>
-<body class="p-4 md:p-8">
+<body class="text-slate-800 antialiased min-h-screen">
 
-    <div class="max-w-6xl mx-auto bg-white p-6 md:p-10 rounded-xl shadow-2xl">
-        <h1 class="text-3xl font-extrabold text-indigo-700 mb-2">文件内容匹配工具 (客户端解析)</h1>
-        <p class="text-gray-600 mb-8">请上传发票信息文件（支持 PDF, Excel）和数据对照文件（支持 Excel），系统将提取内容并进行匹配。**PDF 文件采用客户端文本提取，不支持图像识别。**</p>
-
-        <!-- 重要的 PDF.js Worker 设置 -->
-        <div class="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p class="text-sm text-blue-800">
-                **注意：** 应用程序已切换为纯客户端模式。PDF 文件现在通过 `pdf.js` 库提取**可选中文本**。
-                <br>
-                **重要规则:** 当前匹配规则要求发票信息文件必须是 **PDF 格式**。
-                <br>
-                **图像文件 (.png, .jpg) 已禁用**，因为它们需要 AI/OCR 技术才能提取内容。
-            </p>
+    <!-- Compact Header -->
+    <header class="bg-indigo-700 text-white py-6 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-2">
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
+                    <span>🤖</span> 脚本自动化 Prompt 生成器
+                </h1>
+                <p class="text-xs text-indigo-100 opacity-80 mt-0.5">将业务需求转化为专业脚本指令 (GAS / Python)</p>
+            </div>
+            <div class="text-[10px] uppercase tracking-widest bg-indigo-800 px-2 py-1 rounded border border-indigo-500/50">
+                Google Sites Optimized Edition
+            </div>
         </div>
-        
-        <!-- 主界面容器 -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            <!-- 区域 1: 发票信息上传 -->
-            <div class="p-6 border border-gray-200 rounded-lg bg-indigo-50 shadow-md">
-                <h2 class="text-xl font-semibold text-indigo-600 mb-4">1. 发票信息文件（Invoice Data）</h2>
-                <div id="invoice-upload" class="file-upload-area p-8 text-center rounded-lg bg-white cursor-pointer hover:bg-indigo-50">
-                    <!-- 启用 multiple 属性 -->
-                    <input type="file" id="invoiceFile" class="hidden" accept=".pdf, .xlsx, .xls" multiple>
-                    <p class="text-gray-500"><svg class="w-8 h-8 mx-auto text-indigo-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5.002 5.002 0 0110 5a5.002 5.002 0 014.903 4.117A4 4 0 0117 16H7zM16 16l-4-4m0 0l-4 4m4-4v12"></path></svg>
-                        点击或拖拽上传文件 (可多选)
-                    </p>
-                    <p class="text-sm text-gray-400 mt-1">支持格式: .PDF (文本型), .XLSX, .XLS</p>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+        <!-- Compact 5-P Ribbon -->
+        <section class="bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-200">
+            <div class="flex flex-wrap justify-between items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-indigo-600 font-bold text-sm">5-P 结构:</span>
                 </div>
-                <div id="invoiceStatus" class="mt-3 text-sm text-gray-600 flex items-center"></div>
-            </div>
-
-            <!-- 区域 2: 数据对照上传 -->
-            <div class="p-6 border border-gray-200 rounded-lg bg-green-50 shadow-md">
-                <h2 class="text-xl font-semibold text-green-600 mb-4">2. 数据对照文件（Matching Data）</h2>
-                <div id="excel-upload" class="file-upload-area p-8 text-center rounded-lg bg-white cursor-pointer hover:bg-green-50">
-                    <input type="file" id="excelFile" class="hidden" accept=".xlsx, .xls">
-                    <p class="text-gray-500"><svg class="w-8 h-8 mx-auto text-green-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        点击或拖拽上传 Excel 文件
-                    </p>
-                    <p class="text-sm text-gray-400 mt-1">支持格式: .XLSX, .XLS</p>
+                <div class="flex flex-wrap gap-4 text-[11px] font-medium text-slate-500 uppercase">
+                    <span class="flex items-center gap-1"><span class="bg-blue-100 text-blue-600 w-5 h-5 flex items-center justify-center rounded-full">1</span> Role 角色</span>
+                    <span class="flex items-center gap-1"><span class="bg-teal-100 text-teal-600 w-5 h-5 flex items-center justify-center rounded-full">2</span> Context 背景</span>
+                    <span class="flex items-center gap-1"><span class="bg-indigo-100 text-indigo-600 w-5 h-5 flex items-center justify-center rounded-full">3</span> Input 输入</span>
+                    <span class="flex items-center gap-1"><span class="bg-purple-100 text-purple-600 w-5 h-5 flex items-center justify-center rounded-full">4</span> Logic 逻辑</span>
+                    <span class="flex items-center gap-1"><span class="bg-pink-100 text-pink-600 w-5 h-5 flex items-center justify-center rounded-full">5</span> Output 输出</span>
                 </div>
-                <div id="excelStatus" class="mt-3 text-sm text-gray-600"></div>
+            </div>
+        </section>
+
+        <!-- Integrated AI Bar + Generator -->
+        <div class="space-y-4">
+            <!-- Magic Fill Bar -->
+            <div class="bg-white p-3 rounded-xl border-2 border-indigo-100 shadow-sm flex flex-col sm:flex-row gap-3 items-center">
+                <div class="flex-shrink-0 flex items-center gap-2 text-indigo-700 font-bold text-sm">
+                    <span>✨</span> 智能填充:
+                </div>
+                <input type="text" id="aiInput" placeholder="输入一句话需求, 如: '每天抓取带财务关键词的邮件附件到表格'..." class="flex-grow shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full text-sm border-slate-300 rounded-md p-2 border">
+                <button id="magicFillBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-bold transition-all shadow-sm flex-shrink-0">
+                    解析并填充
+                </button>
+            </div>
+
+            <!-- Workspace -->
+            <div class="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden flex flex-col lg:flex-row min-h-[500px]">
+               
+                <!-- Left: Controls -->
+                <div class="w-full lg:w-5/12 bg-slate-50 p-5 border-r border-slate-200 flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-sm text-slate-800">参数配置</h3>
+                        <select id="templateType" class="bg-white border border-slate-300 text-slate-700 text-xs rounded p-1.5 shadow-sm outline-none">
+                            <option value="general">通用办公自动化</option>
+                            <option value="advanced">进阶多维度清洗</option>
+                        </select>
+                    </div>
+
+                    <form id="promptForm" class="space-y-3 flex-grow">
+                        <!-- General Fields -->
+                        <div id="generalFields" class="space-y-3">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">触发源</label>
+                                    <input type="text" id="gTrigger" value="Gmail" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">关键词</label>
+                                    <input type="text" id="gKeyword" value="Report results" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">数据格式</label>
+                                    <input type="text" id="gFormat" value="CSV" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">目标 Sheet</label>
+                                    <input type="text" id="gSheet" value="原始数据汇总" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">关键匹配列</label>
+                                    <input type="text" id="gMatchCol" value="Company Name" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">参考字典表</label>
+                                    <input type="text" id="gDict" value="公司邮箱字典" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">主题前缀</label>
+                                    <input type="text" id="gPrefix" value="[提醒]" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">抄送人</label>
+                                    <input type="text" id="gCC" value="manager@company.com" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Fields -->
+                        <div id="advancedFields" class="space-y-3 hidden">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">监控对象</label>
+                                <input type="text" id="aSource" value="指定 Google Drive 文件夹" class="w-full compact-input border border-slate-300 rounded">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">清洗列</label>
+                                    <input type="text" id="aTrimCol" value="客户名称" class="w-full compact-input border border-slate-300 rounded">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">过滤状态词</label>
+                                    <input type="text" id="aFilterStatus" value="已完成" class="w-full compact-input border border-slate-300 rounded">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">保留天数</label>
+                                    <input type="number" id="aDays" value="30" class="w-full compact-input border border-slate-300 rounded">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">聚合维度</label>
+                                    <input type="text" id="aAggCol" value="销售员" class="w-full compact-input border border-slate-300 rounded">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">反馈时间</label>
+                                <input type="text" id="aTime" value="每天上午 9:00" class="w-full compact-input border border-slate-300 rounded">
+                            </div>
+                        </div>
+
+                        <div class="pt-3 border-t border-slate-200 mt-2">
+                            <div class="flex flex-wrap gap-x-4 gap-y-1">
+                                <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                                    <input type="checkbox" id="tipEncoding" class="rounded text-indigo-600" checked> 防乱码
+                                </label>
+                                <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                                    <input type="checkbox" id="tipAuth" class="rounded text-indigo-600" checked> 权限提示
+                                </label>
+                                <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                                    <input type="checkbox" id="tipIdempotent" class="rounded text-indigo-600"> 查重防重复
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Right: Result -->
+                <div class="w-full lg:w-7/12 p-5 flex flex-col bg-[#1e293b] min-h-[400px]">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                            <span>✨</span> 生成结果
+                        </h3>
+                        <div class="flex gap-2">
+                            <button id="optimizeBtn" title="优化指令" class="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded text-xs border border-indigo-400">
+                                润色
+                            </button>
+                            <button id="previewCodeBtn" title="预览代码" class="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded text-xs border border-emerald-400">
+                                代码
+                            </button>
+                            <button id="copyBtn" title="复制" class="bg-slate-600 hover:bg-slate-500 text-white p-1.5 rounded text-xs">
+                                复制
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex-grow relative">
+                        <div id="loadingOverlay" class="absolute inset-0 bg-[#0f172a]/80 z-20 hidden flex-col items-center justify-center rounded-lg">
+                            <div class="loading-shimmer w-10 h-10 rounded-full mb-2"></div>
+                            <p class="text-indigo-300 text-xs font-bold animate-pulse">处理中...</p>
+                        </div>
+                        <textarea id="outputArea" readonly class="w-full h-full bg-[#0f172a] text-slate-300 p-3 rounded border border-slate-600 font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 absolute inset-0"></textarea>
+                    </div>
+                    <div id="copyToast" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white px-3 py-1 rounded text-xs shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-30">
+                        已复制！
+                    </div>
+                </div>
             </div>
         </div>
+    </main>
 
-        <!-- 匹配按钮 -->
-        <div class="flex justify-center mt-8">
-            <button id="matchButton" class="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-xl hover:bg-indigo-700 transition duration-150 disabled:opacity-50" disabled>
-                执行内容提取与匹配
-            </button>
-        </div>
-
-        <!-- 结果展示区域 -->
-        <div id="resultsArea" class="mt-12 pt-6 border-t border-gray-200">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">匹配结果</h2>
-            <div id="resultsContent" class="bg-gray-50 p-6 rounded-lg border border-gray-100 min-h-[100px] whitespace-pre-wrap text-sm">
-                <!-- 结果将显示在这里 -->
-                请上传发票文件(可多选)和数据对照文件并点击“执行匹配”按钮。
+    <!-- Modal (Code Preview) -->
+    <div id="codeModal" class="fixed inset-0 bg-black/70 z-[100] hidden flex items-center justify-center p-4">
+        <div class="bg-[#1e293b] w-full max-w-2xl max-h-[70vh] rounded-xl shadow-2xl flex flex-col border border-slate-600">
+            <div class="p-3 border-b border-slate-600 flex justify-between items-center">
+                <h3 class="text-white font-bold text-sm">✨ GAS 代码预览</h3>
+                <button id="closeModal" class="text-slate-400 hover:text-white transition-colors text-xl">×</button>
+            </div>
+            <div class="p-4 overflow-auto flex-grow bg-[#0f172a]">
+                <pre id="codeContent" class="text-emerald-400 font-mono text-[10px] leading-tight whitespace-pre-wrap"></pre>
+            </div>
+            <div class="p-3 border-t border-slate-600 flex justify-between items-center">
+                <span class="text-[10px] text-slate-400 italic">部署前请在脚本编辑器中测试权限。</span>
+                <button id="copyCode" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold">复制</button>
             </div>
         </div>
-
-        <!-- 提示/错误信息模态框 (取代 alert()) -->
-        <div id="modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center p-4">
-            <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full">
-                <h3 class="text-xl font-bold text-red-600 mb-4">操作提示</h3>
-                <p id="modalMessage" class="text-gray-700 mb-4"></p>
-                <button onclick="document.getElementById('modal').classList.add('hidden')" class="w-full bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition">确定</button>
-            </div>
-        </div>
-
     </div>
 
+    <footer class="text-slate-400 py-6 text-center text-[10px] opacity-70">
+        <p>Powered by Gemini AI Engine · Smart Workspace</p>
+    </footer>
+
     <script>
-        // 设置 PDF.js Worker 路径 (用于客户端 PDF 解析)
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.worker.js';
+        const apiKey = ""; // The execution environment provides the key at runtime.
 
-        // 全局变量
-        const invoiceFileEl = document.getElementById('invoiceFile');
-        const excelFileEl = document.getElementById('excelFile');
-        const invoiceStatusEl = document.getElementById('invoiceStatus');
-        const excelStatusEl = document.getElementById('excelStatus');
-        const matchButton = document.getElementById('matchButton');
-        const resultsContentEl = document.getElementById('resultsContent');
-        
-        // 存储多个发票文件的提取数据
-        let invoiceFilesData = []; 
-        // 存储对照 Excel 数据
-        let excelData = null; // { data: Array<Object>, E_key: string, G_key: string }
+        async function callGemini(prompt, systemInstruction = "", responseMimeType = "text/plain", schema = null) {
+            const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=" + apiKey;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                generationConfig: { responseMimeType: responseMimeType }
+            };
+            if (schema) payload.generationConfig.responseSchema = schema;
 
-        // ------------------------------------
-        // --- 辅助函数 ---
-        // ------------------------------------
-
-        /**
-         * 显示自定义模态框（取代 alert()）
-         * @param {string} message 
-         */
-        function showModal(message) {
-            document.getElementById('modalMessage').textContent = message;
-            document.getElementById('modal').classList.remove('hidden');
-            document.getElementById('modal').classList.add('flex');
-        }
-
-        /**
-         * 检查匹配按钮状态
-         */
-        function checkMatchButton() {
-            // 只有当至少有一个发票文件数据 AND 对照 Excel 数据存在且不为空时才启用按钮
-            if (invoiceFilesData.length > 0 && excelData && excelData.data.length > 0) {
-                matchButton.disabled = false;
-                matchButton.classList.remove('disabled:opacity-50');
-            } else {
-                matchButton.disabled = true;
-                matchButton.classList.add('disabled:opacity-50');
-            }
-        }
-        
-        /**
-         * 标准化金额格式为两位小数的字符串
-         * @param {*} rawAmount 原始金额值
-         * @returns {string|null} 格式化后的金额字符串，或 null 如果无效
-         */
-        function standardizeAmount(rawAmount) {
-            const excelAmountRaw = String(rawAmount).trim().replace(/,/g, ''); // 移除千位分隔符
-            const numValue = parseFloat(excelAmountRaw);
-            
-            if (isNaN(numValue) || numValue <= 0) {
-                return null;
-            }
-            
-            // 返回两位小数的标准格式 (e.g., "100.00" or "100.50")
-            return numValue.toFixed(2);
-        }
-
-        // ------------------------------------
-        // --- 文件读取与内容提取逻辑 (客户端版本) ---
-        // ------------------------------------
-
-        /**
-         * 使用 XLSX 库读取 Excel 文件并转换为 JSON 数组，指定表头行
-         */
-        function readExcelFile(file, headerRowIndex) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const sheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[sheetName];
-                        
-                        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }); 
-
-                        if (rawData.length < headerRowIndex) {
-                            return reject(`文件数据少于期望的表头行数 (第 ${headerRowIndex} 行)。`);
-                        }
-
-                        const headers = rawData[headerRowIndex - 1]; 
-                        
-                        // 确定 E 列 (索引 4) 和 G 列 (索引 6) 的键名
-                        const E_key = headers[4]; // 5th column (E)
-                        const G_key = headers[6]; // 7th column (G)
-                        
-                        const rows = rawData.slice(headerRowIndex).map(row => {
-                            const obj = {};
-                            headers.forEach((header, index) => {
-                                if (header) { 
-                                    obj[header] = row[index];
-                                }
-                            });
-                            return obj;
-                        }).filter(obj => Object.keys(obj).length > 0); 
-
-                        resolve({
-                            data: rows,
-                            E_key: E_key, 
-                            G_key: G_key  
-                        });
-                        
-                    } catch (error) {
-                        console.error("Error reading Excel:", error);
-                        reject("读取 Excel 文件时出错，请确保文件格式和内容正确。");
-                    }
-                };
-                reader.onerror = (error) => reject("文件读取失败。");
-                reader.readAsArrayBuffer(file);
-            });
-        }
-        
-        /**
-         * 使用 PDF.js 提取 PDF 文件中的所有文本
-         * @param {File} file PDF 文件对象
-         * @returns {Promise<string>} 提取到的所有文本内容
-         */
-        function extractTextFromPDF(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    const data = e.target.result;
-                    try {
-                        const loadingTask = pdfjsLib.getDocument({ data: data });
-                        const pdf = await loadingTask.promise;
-                        let fullText = '';
-                        
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            const page = await pdf.getPage(i);
-                            const textContent = await page.getTextContent();
-                            fullText += textContent.items.map(s => s.str).join(' ') + '\n';
-                        }
-                        resolve(fullText);
-                    } catch (error) {
-                        console.error("PDF parsing error:", error);
-                        reject("PDF 解析失败。可能是文件损坏或加密。");
-                    }
-                };
-                reader.onerror = (error) => reject("文件读取失败。");
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
-        /**
-         * 处理单个发票文件的提取逻辑
-         * @param {File} file 文件对象
-         * @returns {Promise<Object>} 包含文件名和原始文本的对象
-         */
-        async function processSingleInvoiceFile(file) {
-            const extension = file.name.split('.').pop().toLowerCase();
-            
-            if (extension === 'pdf') {
-                // PDF 文件 (客户端文本提取)
-                const rawText = await extractTextFromPDF(file);
-                return { 
-                    fileName: file.name,
-                    fileExtension: 'pdf',
-                    rawPdfText: rawText 
-                }; 
-            } else if (extension === 'xlsx' || extension === 'xls') {
-                // Excel 文件作为发票信息源
-                // 当前规则要求 PDF 原始文本，所以此文件无法参与匹配
-                showModal(`文件 "${file.name}" 是 Excel 格式。当前匹配规则（Excel数据反向匹配原始PDF文本）要求发票信息文件必须是 PDF 格式。该文件将不参与匹配。`);
-                return { 
-                    fileName: file.name,
-                    fileExtension: 'excel',
-                    rawPdfText: null // 无法匹配
-                };
-            } else {
-                throw new Error(`文件 "${file.name}" 格式不支持。`);
-            }
-        }
-        
-        /**
-         * 处理多个发票文件的容器函数
-         * @param {FileList} files 文件列表
-         */
-        async function handleInvoiceFiles(files) {
-            if (files.length === 0) return;
-            
-            invoiceFilesData = []; // 清空之前的提取数据
-            
-            invoiceStatusEl.innerHTML = `<span class="text-blue-500">正在处理 ${files.length} 个文件...</span>`;
-            
-            let successfulCount = 0;
-            const totalCount = files.length;
-
-            for (let i = 0; i < totalCount; i++) {
-                const file = files[i];
-                invoiceStatusEl.innerHTML = `<div class="flex items-center space-x-2 text-indigo-500 font-semibold"><div class="spinner"></div><span>(${i + 1}/${totalCount}) 正在提取 "${file.name}" 的内容...</span></div>`;
-                
+            let delay = 1000;
+            for (let i = 0; i < 5; i++) {
                 try {
-                    const fileResult = await processSingleInvoiceFile(file);
-                    invoiceFilesData.push(fileResult);
-                    if (fileResult.rawPdfText) {
-                        successfulCount++;
-                    }
-                } catch (error) {
-                    // 打印错误到控制台，继续处理下一个文件
-                    console.error(`文件 "${file.name}" 处理失败:`, error);
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const result = await response.json();
+                    return result.candidates?.[0]?.content?.parts?.[0]?.text;
+                } catch (err) {
+                    if (i === 4) throw err;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
                 }
-            }
-
-            if (successfulCount === totalCount) {
-                invoiceStatusEl.innerHTML = `<span class="text-green-600 font-medium">成功提取 ${totalCount} 个发票文件内容!</span>`;
-            } else if (successfulCount > 0) {
-                 invoiceStatusEl.innerHTML = `<span class="text-orange-500 font-medium">提取完成。${successfulCount}/${totalCount} 个文件含有可匹配的 PDF 文本。</span>`;
-            } else {
-                 invoiceStatusEl.innerHTML = `<span class="text-red-500 font-medium">提取失败! 没有文件含有可匹配的 PDF 文本。</span>`;
-            }
-            
-            checkMatchButton();
-        }
-
-
-        /**
-         * 统一的文件处理和内容提取器 (仅处理 Excel 对照文件)
-         * @param {File} file 文件对象
-         */
-        async function processExcelFile(file) {
-            const extension = file.name.split('.').pop().toLowerCase();
-            excelStatusEl.innerHTML = `<span class="text-blue-500">正在提取 "${file.name}" 的内容...</span>`;
-            
-            try {
-                if (extension !== 'xlsx' && extension !== 'xls') {
-                    showModal("数据对照文件必须是 Excel 格式 (.xlsx/.xls)。");
-                    excelStatusEl.innerHTML = `<span class="text-red-500">文件格式错误。</span>`;
-                    excelData = null;
-                    return;
-                }
-                
-                // 使用 readExcelFile 读取，并指定表头行为第 4 行 (1-based)
-                const excelResult = await readExcelFile(file, 4); 
-                
-                if (!excelResult.E_key || !excelResult.G_key) {
-                    throw new Error(`无法识别 Excel E 列 (金额) 或 G 列 (购买方名称) 的表头。请确保第 4 行的 E 列和 G 列包含不为空的名称。`);
-                }
-                
-                excelData = excelResult; 
-                
-                excelStatusEl.innerHTML = `<span class="text-green-600 font-medium">成功提取!</span> 文件: ${file.name} (E列头: ${excelResult.E_key}, G列头: ${excelResult.G_key})`;
-                
-                checkMatchButton();
-
-            } catch (error) {
-                const message = typeof error === 'string' ? error : `提取过程中发生未知错误: ${error.message}`;
-                excelStatusEl.innerHTML = `<span class="text-red-500 font-medium">提取失败!</span> ${message}`;
-                excelData = null;
-                checkMatchButton();
-                showModal(message);
             }
         }
 
+        document.addEventListener('DOMContentLoaded', () => {
+            const templateTypeSelect = document.getElementById('templateType');
+            const generalFields = document.getElementById('generalFields');
+            const advancedFields = document.getElementById('advancedFields');
+            const outputArea = document.getElementById('outputArea');
+            const copyBtn = document.getElementById('copyBtn');
+            const magicFillBtn = document.getElementById('magicFillBtn');
+            const optimizeBtn = document.getElementById('optimizeBtn');
+            const previewCodeBtn = document.getElementById('previewCodeBtn');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const codeModal = document.getElementById('codeModal');
+            const codeContent = document.getElementById('codeContent');
+            const aiInput = document.getElementById('aiInput');
 
-        // ------------------------------------
-        // --- 匹配逻辑 (多文件循环匹配) ---
-        // ------------------------------------
-
-        /**
-         * 执行内容匹配
-         */
-        function executeMatching() {
-            if (invoiceFilesData.length === 0 || !excelData || excelData.data.length === 0) {
-                showModal("请先上传发票信息文件和数据对照文件 (Excel)，并确保 Excel 中有数据。");
-                return;
-            }
-
-            resultsContentEl.innerHTML = `<div class="text-center py-4 text-indigo-500 font-semibold">正在执行 ${invoiceFilesData.length} 个发票文件的反向匹配...</div>`;
-
-            let report = `--- 批量匹配报告 (${new Date().toLocaleString('zh-CN')}) ---\n\n`;
-            
-            // 1. 数据对照文件信息 (Source 2 - 列表数据)
-            const excelRows = excelData.data; 
-            const excelAmountKey = excelData.E_key;
-            const excelBuyerNameKey = excelData.G_key;
-
-            report += `[数据对照文件] (共 ${excelRows.length} 条记录)\n`;
-            report += `   - E 列表头 (金额): **${excelAmountKey}**\n`;
-            report += `   - G 列表头 (购买方名称): **${excelBuyerNameKey}**\n`;
-            report += `\n==================================================\n`;
-
-
-            // 2. 循环处理每一个发票文件
-            let globalMatchCount = 0;
-            
-            invoiceFilesData.forEach((invoiceFile, index) => {
-                
-                report += `\n*** [发票文件 ${index + 1}/${invoiceFilesData.length}]： ${invoiceFile.fileName} ***\n`;
-                
-                if (!invoiceFile.rawPdfText) {
-                    report += `⚠️ 无法进行匹配。该文件非 PDF 格式或提取失败，不含原始文本。\n`;
-                    report += `==================================================\n`;
-                    return; // 跳过此文件
-                }
-
-                const pdfText = invoiceFile.rawPdfText;
-                let amountMatch = false;      // 金额匹配状态
-                let buyerNameMatch = false;   // 购买方名称匹配状态
-                
-                const matchedAmounts = new Set();
-                const matchedAmountRows = []; // 存储所有金额匹配成功的 Excel 行
-                const matchedBuyerNames = new Set();
-                
-                // --- 阶段 1: 查找所有金额匹配成功的 Excel 行 (决定哪些行参与名称匹配) ---
-                excelRows.forEach(row => {
-                    const formattedAmount = standardizeAmount(row[excelAmountKey]); // 标准两位小数金额
-                    
-                    if (formattedAmount && pdfText.includes(formattedAmount)) {
-                        amountMatch = true;
-                        matchedAmounts.add(formattedAmount);
-                        matchedAmountRows.push(row);
-                    }
-                });
-                
-                // --- 阶段 2: 根据金额匹配成功的行，检查购买方名称 ---
-                if (amountMatch) {
-                    for (const row of matchedAmountRows) {
-                        const excelBuyerName = String(row[excelBuyerNameKey]).trim();
-                        
-                        // 只要找到一个匹配成功的购买方名称即可
-                        if (excelBuyerName && pdfText.includes(excelBuyerName)) {
-                            buyerNameMatch = true;
-                            matchedBuyerNames.add(excelBuyerName);
-                            break; // 找到即停止查找
-                        }
-                    }
-                }
-                
-                // 4. 生成报告
-                if (amountMatch && buyerNameMatch) {
-                    report += `\n--- **匹配结果: ✅ 正确** ---\n`;
-                    report += `✅ 金额: Excel E 列中的金额【${Array.from(matchedAmounts).join(' / ')}】已在 PDF 文本中找到。\n`;
-                    report += `✅ 购买方名称: 来自金额匹配行 (${matchedAmountRows.length} 行) 的 G 列名称【${Array.from(matchedBuyerNames).join(' / ')}】已在 PDF 文本中找到。\n`;
-                    globalMatchCount++;
+            function updateVisibility() {
+                if (templateTypeSelect.value === 'general') {
+                    generalFields.classList.remove('hidden');
+                    advancedFields.classList.add('hidden');
                 } else {
-                    report += `\n--- **匹配结果: ❌ 不一致** ---\n`;
-                    
-                    // 报告金额的不一致性 (优先级最高)
-                    if (!amountMatch) {
-                        report += `❌ 金额不一致。Excel E 列中任意金额 (标准两位小数) 都未在 PDF 原始文本中找到。\n`;
-                    } else {
-                        report += `✅ 金额一致 (匹配到的金额: ${Array.from(matchedAmounts).join(' / ')}).\n`;
-                        
-                        // 报告购买方名称的不一致性 (仅在金额匹配成功时检查)
-                        if (!buyerNameMatch) {
-                             report += `❌ 购买方名称不一致。来自金额匹配行 (${matchedAmountRows.length} 行) 的 G 列名称都未在 PDF 原始文本中找到。\n`;
-                        }
-                    }
+                    generalFields.classList.add('hidden');
+                    advancedFields.classList.remove('hidden');
+                }
+                generatePrompt();
+            }
+
+            function generatePrompt() {
+                const type = templateTypeSelect.value;
+                let prompt = "";
+
+                if (type === 'general') {
+                    const t = document.getElementById('gTrigger').value || '[源]';
+                    const k = document.getElementById('gKeyword').value || '[词]';
+                    const f = document.getElementById('gFormat').value || '[格式]';
+                    const s = document.getElementById('gSheet').value || '[表]';
+                    const mc = document.getElementById('gMatchCol').value || '[列]';
+                    const d = document.getElementById('gDict').value || '[字典]';
+                    const p = document.getElementById('gPrefix').value || '[前缀]';
+                    const c = document.getElementById('gCC').value || '[抄送]';
+
+                    prompt = `[角色] 资深 GAS 开发专家
+[目标] 脚本自动化流程：
+1. 在 ${t} 搜索 "${k}"。读取附件 ${f}。
+2. 写入 Sheet "${s}"，记录时间戳。
+3. 对比 "${mc}"。去 "${d}" 查找负责人邮箱。
+4. 发送邮件。主题：${p} - {{${mc}}}。抄送：${c}。列出明细。
+5. 无数据则停止。`;
+                } else {
+                    const s = document.getElementById('aSource').value || '[源]';
+                    const tc = document.getElementById('aTrimCol').value || '[列]';
+                    const fs = document.getElementById('aFilterStatus').value || '[状态]';
+                    const d = document.getElementById('aDays').value || '[N]';
+                    const ac = document.getElementById('aAggCol').value || '[维度]';
+                    const ti = document.getElementById('aTime').value || '[时间]';
+
+                    prompt = `[任务] 编写自动化脚本。
+[逻辑]
+- 监控 ${s}。
+- 清洗："${tc}" 去空格，过滤状态为 "${fs}"，保留近 ${d} 天。
+- 聚合反馈：按 "${ac}" 汇总，${ti} 发送简报。`;
                 }
 
-                // --- 调试信息：PDF 原始文本 (仅展示部分) ---
-                const debugText = pdfText.substring(0, 1000) + (pdfText.length > 1000 ? '\n\n... (文本过长，已省略)' : ''); 
-                report += `\n--- 原始 PDF 文本片段 (供调试) ---\n${debugText}\n`;
-                report += `==================================================\n`;
+                let tips = "";
+                if(document.getElementById('tipEncoding').checked) tips += "\n- 识别 UTF-8。";
+                if(document.getElementById('tipAuth').checked) tips += "\n- 提示手动运行授权。";
+                if(document.getElementById('tipIdempotent').checked) tips += "\n- 检查重复项。";
+               
+                outputArea.value = prompt + (tips ? `\n\n[防御性要求]${tips}` : "");
+            }
 
+            magicFillBtn.addEventListener('click', async () => {
+                const userReq = aiInput.value.trim();
+                if (!userReq) return;
+                loadingOverlay.classList.remove('hidden');
+                const schema = {
+                    type: "OBJECT",
+                    properties: {
+                        type: { type: "STRING", enum: ["general", "advanced"] },
+                        gTrigger: { type: "STRING" }, gKeyword: { type: "STRING" }, gFormat: { type: "STRING" },
+                        gSheet: { type: "STRING" }, gMatchCol: { type: "STRING" }, gDict: { type: "STRING" },
+                        gPrefix: { type: "STRING" }, gCC: { type: "STRING" }, aSource: { type: "STRING" },
+                        aTrimCol: { type: "STRING" }, aFilterStatus: { type: "STRING" }, aDays: { type: "NUMBER" },
+                        aAggCol: { type: "STRING" }, aTime: { type: "STRING" }
+                    }
+                };
+                try {
+                    const result = await callGemini(userReq, "解析需求并映射到配置字段。", "application/json", schema);
+                    const data = JSON.parse(result);
+                    if (data.type) templateTypeSelect.value = data.type;
+                    updateVisibility();
+                    Object.keys(data).forEach(k => { if (document.getElementById(k)) document.getElementById(k).value = data[k]; });
+                    generatePrompt();
+                } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
             });
-            
-            // 5. 总结
-            report = `--- 总结: ${globalMatchCount}/${invoiceFilesData.length} 个发票文件匹配成功 ---\n` + report;
-            
-            resultsContentEl.textContent = report;
-        }
 
+            optimizeBtn.addEventListener('click', async () => {
+                loadingOverlay.classList.remove('hidden');
+                try {
+                    const res = await callGemini(outputArea.value, "润色并优化此 Prompt，使其更专业，保持 5-P 结构。");
+                    outputArea.value = res;
+                } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
+            });
 
-        // ------------------------------------
-        // --- 事件监听器 ---
-        // ------------------------------------
+            previewCodeBtn.addEventListener('click', async () => {
+                loadingOverlay.classList.remove('hidden');
+                try {
+                    const code = await callGemini(outputArea.value, "根据指令生成一份完整的 Google Apps Script 示例代码。");
+                    codeContent.textContent = code;
+                    codeModal.classList.remove('hidden');
+                } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
+            });
 
-        // 点击上传区域触发文件选择
-        document.getElementById('invoice-upload').addEventListener('click', () => invoiceFileEl.click());
-        document.getElementById('excel-upload').addEventListener('click', () => excelFileEl.click());
+            templateTypeSelect.addEventListener('change', updateVisibility);
+            document.querySelectorAll('#promptForm input, #promptForm select').forEach(i => i.addEventListener('input', generatePrompt));
+            copyBtn.onclick = () => {
+                outputArea.select(); document.execCommand('copy');
+                const toast = document.getElementById('copyToast'); toast.classList.remove('opacity-0');
+                setTimeout(() => toast.classList.add('opacity-0'), 2000);
+            };
+            document.getElementById('closeModal').onclick = () => codeModal.classList.add('hidden');
+            document.getElementById('copyCode').onclick = () => {
+                const dummy = document.createElement("textarea"); document.body.appendChild(dummy);
+                dummy.value = codeContent.textContent; dummy.select(); document.execCommand("copy");
+                document.body.removeChild(dummy);
+                document.getElementById('copyCode').innerText = "已复制";
+                setTimeout(() => document.getElementById('copyCode').innerText = "复制", 2000);
+            };
 
-        // 监听发票文件变化 (处理多文件)
-        invoiceFileEl.addEventListener('change', (e) => {
-            const files = e.target.files;
-            if (files.length > 0) {
-                handleInvoiceFiles(files);
-            }
+            updateVisibility();
         });
-
-        // 监听 Excel 文件变化 (处理单文件)
-        excelFileEl.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                processExcelFile(file);
-            }
-        });
-
-        // 监听匹配按钮点击
-        matchButton.addEventListener('click', executeMatching);
-
-        // 初始化检查按钮状态
-        checkMatchButton();
-        
     </script>
 </body>
 </html>
