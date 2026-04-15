@@ -1,486 +1,468 @@
-<!-- Chosen Palette: Slate & Indigo (Professional, Compact, Tech-focused) -->
-<!-- Application Structure Plan: Optimized for Zhipu AI (GLM-4) API integration with GitHub Secrets support. -->
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>脚本自动化 Prompt 生成器 (智谱 AI 自动版)</title>
+    <title>财务差旅报销校对系统 - 聚细旅行专用版</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
-        .compact-input { padding: 0.4rem 0.75rem; font-size: 0.875rem; }
-        .loading-shimmer {
-            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-        }
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .status-badge { transition: all 0.3s ease; }
     </style>
 </head>
-<body class="text-slate-800 antialiased min-h-screen">
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
 
-    <!-- Compact Header -->
-    <header class="bg-indigo-700 text-white py-4 shadow-sm">
-        <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div>
-                <h1 class="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
-                    <span>🚀</span> 脚本自动化 Prompt 生成器
-                </h1>
-                <p class="text-[10px] text-indigo-100 opacity-80 mt-0.5">适配 智谱 AI GLM-4 · 业务需求转脚本指令</p>
-            </div>
-            <!-- API Key Config Area -->
-            <div class="flex items-center gap-2 bg-indigo-800/50 p-1.5 rounded-lg border border-indigo-500/30">
-                <span id="keySourceIcon" class="text-[10px] ml-1">🔒</span>
-                <span class="text-[10px] font-bold uppercase text-indigo-200">Key:</span>
-                <input type="password" id="userApiKey" placeholder="GitHub 自动注入或手动输入" class="bg-indigo-900/50 border-none text-[10px] rounded px-2 py-1 w-48 focus:ring-1 focus:ring-indigo-400 text-white outline-none">
-                <div id="keyStatus" class="w-2 h-2 rounded-full bg-red-400" title="未检测到有效 Key"></div>
-            </div>
-        </div>
-    </header>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-    <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        // 智谱 AI 配置
+        const ZHIPU_API_KEY = "8776cadbc359430cab2d635625ac65fe.3U3GnOC5VU2FfNKo";
+        const ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
-        <!-- Compact 5-P Ribbon -->
-        <section class="bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-200">
-            <div class="flex flex-wrap justify-between items-center gap-4">
-                <div class="flex items-center gap-2">
-                    <span class="text-indigo-600 font-bold text-sm">5-P 指令框架:</span>
-                </div>
-                <div class="flex flex-wrap gap-4 text-[11px] font-medium text-slate-500 uppercase">
-                    <span class="flex items-center gap-1"><span class="bg-blue-100 text-blue-600 w-5 h-5 flex items-center justify-center rounded-full">1</span> Role 角色</span>
-                    <span class="flex items-center gap-1"><span class="bg-teal-100 text-teal-600 w-5 h-5 flex items-center justify-center rounded-full">2</span> Context 背景</span>
-                    <span class="flex items-center gap-1"><span class="bg-indigo-100 text-indigo-600 w-5 h-5 flex items-center justify-center rounded-full">3</span> Input 输入</span>
-                    <span class="flex items-center gap-1"><span class="bg-purple-100 text-purple-600 w-5 h-5 flex items-center justify-center rounded-full">4</span> Logic 逻辑</span>
-                    <span class="flex items-center gap-1"><span class="bg-pink-100 text-pink-600 w-5 h-5 flex items-center justify-center rounded-full">5</span> Output 输出</span>
-                </div>
-            </div>
-        </section>
+        const App = () => {
+            const [headerInfo, setHeaderInfo] = useState({ person: '', date: '', company: '' });
+            const [reimbursementData, setReimbursementData] = useState([]);
+            const [invoiceFiles, setInvoiceFiles] = useState([]);
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [results, setResults] = useState([]);
+            const [logs, setLogs] = useState([]);
+            const [activeTab, setActiveTab] = useState('all');
 
-        <!-- Integrated AI Bar + Generator -->
-        <div class="space-y-4">
-            <!-- Magic Fill Bar -->
-            <div class="bg-white p-3 rounded-xl border-2 border-indigo-100 shadow-sm flex flex-col sm:flex-row gap-3 items-center">
-                <div class="flex-shrink-0 flex items-center gap-2 text-indigo-700 font-bold text-sm">
-                    <span>✨</span> 智能填充:
-                </div>
-                <input type="text" id="aiInput" placeholder="输入一句话需求, 如: '每天抓取带财务关键词的邮件附件到表格'..." class="flex-grow shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full text-sm border-slate-300 rounded-md p-2 border">
-                <button id="magicFillBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-bold transition-all shadow-sm flex-shrink-0">
-                    智谱解析并填充
-                </button>
-            </div>
+            const addLog = (msg) => {
+                setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
+            };
 
-            <!-- Workspace -->
-            <div class="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden flex flex-col lg:flex-row min-h-[500px]">
-               
-                <!-- Left: Controls -->
-                <div class="w-full lg:w-5/12 bg-slate-50 p-5 border-r border-slate-200 flex flex-col">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-bold text-sm text-slate-800">参数配置</h3>
-                        <select id="templateType" class="bg-white border border-slate-300 text-slate-700 text-xs rounded p-1.5 shadow-sm outline-none">
-                            <option value="general">通用办公自动化</option>
-                            <option value="advanced">进阶多维度清洗</option>
-                        </select>
+            // 针对用户上传的模板优化的 Excel 解析逻辑
+            const handleExcelUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const data = evt.target.result;
+                    const workbook = XLSX.read(data, { type: 'binary' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    
+                    // 将表格转为二维数组处理，因为模板上方有 metadata
+                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    
+                    // 1. 提取抬头信息 (报销人、日期等)
+                    let person = "", date = "", company = "";
+                    rows.forEach(row => {
+                        const rowStr = row.join(',');
+                        if (rowStr.includes('报销人：')) person = row[row.indexOf('报销人：') + 2] || '';
+                        if (rowStr.includes('报销日期：')) date = row[row.indexOf('报销日期：') + 1] || '';
+                        if (rowStr.includes('付款公司：')) company = row[row.indexOf('付款公司：') + 1] || '';
+                    });
+                    setHeaderInfo({ person, date, company });
+
+                    // 2. 定位数据行 (寻找包含“序号”或“报销项目”的行)
+                    let headerRowIndex = -1;
+                    for(let i=0; i<rows.length; i++) {
+                        if(rows[i].includes('序号') && rows[i].includes('报销金额')) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (headerRowIndex === -1) {
+                        alert("未识别到标准报销单格式，请检查 Excel 模板是否正确。");
+                        return;
+                    }
+
+                    const headers = rows[headerRowIndex];
+                    const colMap = {
+                        index: headers.indexOf('序号'),
+                        category: headers.indexOf('报销项目'),
+                        summary: headers.indexOf('摘要'),
+                        type: headers.indexOf('发票类型（专/普）'),
+                        amount: headers.indexOf('报销金额'),
+                        hasInvoice: headers.indexOf('是否有发票')
+                    };
+
+                    // 3. 提取并清洗数据
+                    const dataRows = rows.slice(headerRowIndex + 1);
+                    const formatted = [];
+                    let lastCategory = "";
+
+                    for (let row of dataRows) {
+                        const amount = parseFloat(row[colMap.amount]);
+                        const summary = row[colMap.summary];
+                        
+                        // 遇到“合计”行则停止
+                        if (row.join('').includes('合    计') || row.join('').includes('合计')) break;
+                        
+                        // 如果金额无效或是空行则跳过
+                        if (isNaN(amount) || !summary) continue;
+
+                        // 处理合并单元格逻辑：如果项目为空，沿用上一行的项目
+                        const currentCategory = row[colMap.category] || lastCategory;
+                        lastCategory = currentCategory;
+
+                        formatted.push({
+                            id: `row-${formatted.length}`,
+                            category: currentCategory,
+                            summary: summary,
+                            type: row[colMap.type] || '无',
+                            amount: amount,
+                            hasInvoice: row[colMap.hasInvoice] || '否',
+                            status: 'pending'
+                        });
+                    }
+                    
+                    setReimbursementData(formatted);
+                    addLog(`Excel 导入成功: 已识别 ${formatted.length} 条有效报销项。报销人: ${person}`);
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            const handleImageUpload = (e) => {
+                const files = Array.from(e.target.files);
+                const newInvoices = files.map(file => ({
+                    id: Math.random().toString(36).substr(2, 9),
+                    file,
+                    preview: URL.createObjectURL(file),
+                    status: 'waiting',
+                    aiResult: null
+                }));
+                setInvoiceFiles(prev => [...prev, ...newInvoices]);
+                addLog(`图片添加: 成功载入 ${files.length} 张发票图片。`);
+            };
+
+            const recognizeInvoice = async (invoice) => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = async () => {
+                        const base64Image = reader.result.split(',')[1];
+                        try {
+                            const response = await fetch(ZHIPU_API_URL, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${ZHIPU_API_KEY}`
+                                },
+                                body: JSON.stringify({
+                                    model: "glm-4v",
+                                    messages: [
+                                        {
+                                            role: "user",
+                                            content: [
+                                                { type: "text", text: "识别这张发票。输出 JSON 格式（只输出 JSON），包含字段：amount(数字), date(YYYY-MM-DD), type(类型)。" },
+                                                { type: "image_url", image_url: { url: base64Image } }
+                                            ]
+                                        }
+                                    ]
+                                })
+                            });
+                            const res = await response.json();
+                            const content = res.choices[0].message.content;
+                            const jsonMatch = content.match(/\{.*\}/s);
+                            const data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+                            resolve(data);
+                        } catch (err) {
+                            resolve(null);
+                        }
+                    };
+                    reader.readAsDataURL(invoice.file);
+                });
+            };
+
+            const startAudit = async () => {
+                if (!reimbursementData.length || !invoiceFiles.length) {
+                    alert("请先上传 Excel 报销单和发票照片");
+                    return;
+                }
+
+                setIsProcessing(true);
+                addLog("启动 AI 校对流程...");
+
+                const processedInvoices = [];
+                const tempInvoices = [...invoiceFiles];
+
+                for (let i = 0; i < tempInvoices.length; i++) {
+                    tempInvoices[i].status = 'processing';
+                    setInvoiceFiles([...tempInvoices]);
+                    addLog(`AI 正在解析第 ${i+1}/${tempInvoices.length} 张图片...`);
+                    
+                    const aiData = await recognizeInvoice(tempInvoices[i]);
+                    tempInvoices[i].aiResult = aiData;
+                    tempInvoices[i].status = 'done';
+                    processedInvoices.push(aiData);
+                    setInvoiceFiles([...tempInvoices]);
+                }
+
+                addLog("正在比对报销单与发票金额...");
+                const auditResults = reimbursementData.map(item => {
+                    // 核心匹配逻辑：金额允许 0.1 元以内的误差
+                    const matchedInvoice = processedInvoices.find(inv => inv && Math.abs(inv.amount - item.amount) < 0.1);
+                    return {
+                        ...item,
+                        status: matchedInvoice ? 'ok' : 'missing'
+                    };
+                });
+
+                setResults(auditResults);
+                setIsProcessing(false);
+                addLog("校对任务全部完成！");
+            };
+
+            const filteredResults = results.length > 0 
+                ? (activeTab === 'all' ? results : results.filter(r => r.status === activeTab))
+                : reimbursementData;
+
+            return (
+                <div className="min-h-screen p-4 md:p-8">
+                    <div className="max-w-7xl mx-auto">
+                        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                            <div className="flex items-center gap-4">
+                                <div className="p-4 bg-indigo-600 rounded-2xl text-white shadow-indigo-200 shadow-xl">
+                                    <i data-lucide="file-check-2" className="w-8 h-8"></i>
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold text-slate-800 tracking-tight">聚细旅行财务校对系统</h1>
+                                    <div className="flex gap-4 mt-1 text-xs text-slate-500 font-medium">
+                                        <span className="flex items-center gap-1"><i data-lucide="user" className="w-3 h-3"></i> 报销人: {headerInfo.person || '-'}</span>
+                                        <span className="flex items-center gap-1"><i data-lucide="calendar" className="w-3 h-3"></i> 日期: {headerInfo.date || '-'}</span>
+                                        <span className="flex items-center gap-1"><i data-lucide="building" className="w-3 h-3"></i> 付款方: {headerInfo.company || '-'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={() => {setReimbursementData([]); setInvoiceFiles([]); setResults([]); setLogs([]);}}
+                                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-all"
+                                >
+                                    重置
+                                </button>
+                                <button 
+                                    onClick={startAudit}
+                                    disabled={isProcessing}
+                                    className={`px-8 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 ${
+                                        isProcessing ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100'
+                                    }`}
+                                >
+                                    {isProcessing ? <><i data-lucide="loader-2" className="animate-spin w-4 h-4"></i> 系统校对中...</> : <><i data-lucide="sparkles" className="w-4 h-4"></i> 开始 AI 审计</>}
+                                </button>
+                            </div>
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            {/* 文件上传侧边栏 */}
+                            <div className="lg:col-span-4 space-y-6">
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                        <i data-lucide="file-spreadsheet" className="w-16 h-16"></i>
+                                    </div>
+                                    <h3 className="font-bold flex items-center gap-2 mb-4 text-slate-700">
+                                        <span className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">1</span>
+                                        上传报销单 Excel
+                                    </h3>
+                                    <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer">
+                                        <input type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                        <i data-lucide="upload-cloud" className="mx-auto text-slate-400 mb-2"></i>
+                                        <p className="text-xs text-slate-500">点击上传聚细专用报销模板</p>
+                                        {reimbursementData.length > 0 && <p className="mt-3 text-green-600 font-bold text-sm">已加载 {reimbursementData.length} 项</p>}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                        <i data-lucide="images" className="w-16 h-16"></i>
+                                    </div>
+                                    <h3 className="font-bold flex items-center gap-2 mb-4 text-slate-700">
+                                        <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">2</span>
+                                        批量上传发票
+                                    </h3>
+                                    <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer mb-4">
+                                        <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                        <i data-lucide="plus-circle" className="mx-auto text-slate-400 mb-2"></i>
+                                        <p className="text-xs text-slate-500">支持拖入多张发票照片</p>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-4 gap-3 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                        {invoiceFiles.map(inv => (
+                                            <div key={inv.id} className="relative aspect-square rounded-xl overflow-hidden border border-slate-100 group shadow-sm">
+                                                <img src={inv.preview} className="w-full h-full object-cover" />
+                                                {inv.status === 'processing' && (
+                                                    <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center">
+                                                        <i data-lucide="refresh-cw" className="animate-spin text-indigo-600 w-5 h-5"></i>
+                                                    </div>
+                                                )}
+                                                {inv.status === 'done' && (
+                                                    <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full p-0.5 shadow-md">
+                                                        <i data-lucide="check" className="w-3 h-3"></i>
+                                                    </div>
+                                                )}
+                                                <button 
+                                                    onClick={() => setInvoiceFiles(f => f.filter(x => x.id !== inv.id))}
+                                                    className="absolute inset-0 bg-red-500/90 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                                >
+                                                    <i data-lucide="trash-2" className="w-5 h-5"></i>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-900 text-slate-400 p-5 rounded-3xl text-[11px] font-mono h-52 overflow-y-auto custom-scrollbar shadow-xl border border-slate-800">
+                                    <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                                        <span className="text-indigo-400 font-bold uppercase tracking-widest flex items-center gap-2">
+                                            <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
+                                            Audit Console
+                                        </span>
+                                        <span className="text-slate-600">v1.2.0</span>
+                                    </div>
+                                    {logs.map((l, i) => <div key={i} className="mb-2 leading-relaxed opacity-90"><span className="text-slate-600">>></span> {l}</div>)}
+                                    {logs.length === 0 && <div className="text-slate-700 italic flex items-center justify-center h-24">等待用户操作...</div>}
+                                </div>
+                            </div>
+
+                            {/* 对账主视图 */}
+                            <div className="lg:col-span-8">
+                                <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[760px]">
+                                    <div className="p-6 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white sticky top-0 z-10 gap-4">
+                                        <div>
+                                            <h3 className="font-extrabold text-xl text-slate-800">报销项目审计清单</h3>
+                                            <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">Audit Detail List</p>
+                                        </div>
+                                        <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                                            {[
+                                                {id:'all', label: '全部'},
+                                                {id:'ok', label: '已匹配'},
+                                                {id:'missing', label: '发票缺失'}
+                                            ].map(tab => (
+                                                <button 
+                                                    key={tab.id}
+                                                    onClick={() => setActiveTab(tab.id)}
+                                                    className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                        activeTab === tab.id ? 'bg-white text-indigo-600 shadow-md scale-[1.02]' : 'text-slate-400 hover:text-slate-600'
+                                                    }`}
+                                                >
+                                                    {tab.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                        <table className="w-full text-left border-separate border-spacing-0">
+                                            <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-bold tracking-widest sticky top-0 z-20 backdrop-blur-md">
+                                                <tr>
+                                                    <th className="px-8 py-5 border-b border-slate-100">审计状态</th>
+                                                    <th className="px-6 py-5 border-b border-slate-100">类别 / 摘要</th>
+                                                    <th className="px-6 py-5 border-b border-slate-100 text-right">报销金额</th>
+                                                    <th className="px-6 py-5 border-b border-slate-100">发票类型</th>
+                                                    <th className="px-8 py-5 border-b border-slate-100">系统建议</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50">
+                                                {filteredResults.map((item, idx) => (
+                                                    <tr key={idx} className="group hover:bg-slate-50/80 transition-all">
+                                                        <td className="px-8 py-6">
+                                                            {item.status === 'ok' ? (
+                                                                <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 w-fit px-3 py-1.5 rounded-full border border-emerald-100">
+                                                                    <i data-lucide="check-circle" className="w-4 h-4"></i> OK
+                                                                </div>
+                                                            ) : item.status === 'missing' ? (
+                                                                <div className="flex items-center gap-2 text-rose-500 font-bold text-xs bg-rose-50 w-fit px-3 py-1.5 rounded-full border border-rose-100 animate-pulse">
+                                                                    <i data-lucide="alert-octagon" className="w-4 h-4"></i> 缺失
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs bg-slate-50 w-fit px-3 py-1.5 rounded-full border border-slate-100">
+                                                                    <i data-lucide="circle-dashed" className="w-4 h-4"></i> 待校
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-6">
+                                                            <div className="text-[10px] text-indigo-500 font-bold uppercase mb-1">{item.category}</div>
+                                                            <div className="text-sm font-semibold text-slate-700">{item.summary}</div>
+                                                        </td>
+                                                        <td className="px-6 py-6 text-right">
+                                                            <div className="text-base font-mono font-bold text-slate-800">
+                                                                ¥{item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-6">
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${
+                                                                item.type === '普票' ? 'border-blue-100 text-blue-500 bg-blue-50' : 
+                                                                item.type === '专票' ? 'border-orange-100 text-orange-500 bg-orange-50' : 
+                                                                'border-slate-100 text-slate-400 bg-slate-50'
+                                                            }`}>
+                                                                {item.type}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-8 py-6">
+                                                            {item.status === 'ok' ? (
+                                                                <div className="text-xs text-slate-500 flex items-center gap-1">
+                                                                    <i data-lucide="info" className="w-3 h-3"></i> 已发现匹配发票
+                                                                </div>
+                                                            ) : item.status === 'missing' ? (
+                                                                <div className="text-xs text-rose-400 font-medium flex items-center gap-1">
+                                                                    <i data-lucide="x-circle" className="w-3 h-3"></i> 请要求员工补齐票据
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-xs text-slate-300 italic">准备好后点击上方开始审计</div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {reimbursementData.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan="5" className="py-48 text-center">
+                                                            <div className="inline-block p-10 rounded-full bg-slate-50 mb-4">
+                                                                <i data-lucide="inbox" className="w-16 h-16 text-slate-200"></i>
+                                                            </div>
+                                                            <p className="text-slate-400 font-bold tracking-widest uppercase text-sm">Waiting for Data Import</p>
+                                                            <p className="text-slate-300 text-xs mt-2">请先从左侧面板上传 Excel 文件</p>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                                        <div className="text-xs text-slate-400 font-medium">
+                                            共计 {reimbursementData.length} 项费用项
+                                        </div>
+                                        <div className="text-sm font-bold text-slate-800">
+                                            总金额: ¥{reimbursementData.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-
-                    <form id="promptForm" class="space-y-3 flex-grow">
-                        <!-- General Fields -->
-                        <div id="generalFields" class="space-y-3">
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">触发源</label>
-                                    <input type="text" id="gTrigger" value="Gmail" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">关键词</label>
-                                    <input type="text" id="gKeyword" value="Report results" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">数据格式</label>
-                                    <input type="text" id="gFormat" value="CSV" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">目标 Sheet</label>
-                                    <input type="text" id="gSheet" value="原始数据汇总" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">关键匹配列</label>
-                                    <input type="text" id="gMatchCol" value="Company Name" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">参考字典表</label>
-                                    <input type="text" id="gDict" value="公司邮箱字典" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">主题前缀</label>
-                                    <input type="text" id="gPrefix" value="[提醒]" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">抄送人</label>
-                                    <input type="text" id="gCC" value="manager@company.com" class="w-full compact-input border border-slate-300 rounded focus:ring-1 focus:ring-indigo-400">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Advanced Fields -->
-                        <div id="advancedFields" class="space-y-3 hidden">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 mb-1">监控对象</label>
-                                <input type="text" id="aSource" value="指定 Google Drive 文件夹" class="w-full compact-input border border-slate-300 rounded">
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">清洗列</label>
-                                    <input type="text" id="aTrimCol" value="客户名称" class="w-full compact-input border border-slate-300 rounded">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">过滤状态词</label>
-                                    <input type="text" id="aFilterStatus" value="已完成" class="w-full compact-input border border-slate-300 rounded">
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">保留天数</label>
-                                    <input type="number" id="aDays" value="30" class="w-full compact-input border border-slate-300 rounded">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">聚合维度</label>
-                                    <input type="text" id="aAggCol" value="销售员" class="w-full compact-input border border-slate-300 rounded">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 mb-1">反馈时间</label>
-                                <input type="text" id="aTime" value="每天上午 9:00" class="w-full compact-input border border-slate-300 rounded">
-                            </div>
-                        </div>
-
-                        <div class="pt-3 border-t border-slate-200 mt-2">
-                            <div class="flex flex-wrap gap-x-4 gap-y-1">
-                                <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="tipEncoding" class="rounded text-indigo-600" checked> 防乱码
-                                </label>
-                                <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="tipAuth" class="rounded text-indigo-600" checked> 权限提示
-                                </label>
-                                <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="tipIdempotent" class="rounded text-indigo-600"> 查重防重复
-                                </label>
-                            </div>
-                        </div>
-                    </form>
                 </div>
+            );
+        };
 
-                <!-- Right: Result -->
-                <div class="w-full lg:w-7/12 p-5 flex flex-col bg-[#1e293b] min-h-[400px]">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="font-bold text-sm text-white flex items-center gap-2">
-                            <span>✨</span> 生成结果 (智谱驱动)
-                        </h3>
-                        <div class="flex gap-2">
-                            <button id="optimizeBtn" title="优化指令" class="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded text-xs border border-indigo-400">
-                                润色
-                            </button>
-                            <button id="previewCodeBtn" title="预览代码" class="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded text-xs border border-emerald-400">
-                                代码
-                            </button>
-                            <button id="copyBtn" title="复制" class="bg-slate-600 hover:bg-slate-500 text-white p-1.5 rounded text-xs">
-                                复制
-                            </button>
-                        </div>
-                    </div>
-                    <div class="flex-grow relative">
-                        <div id="loadingOverlay" class="absolute inset-0 bg-[#0f172a]/80 z-20 hidden flex-col items-center justify-center rounded-lg">
-                            <div class="loading-shimmer w-10 h-10 rounded-full mb-2"></div>
-                            <p class="text-indigo-300 text-xs font-bold animate-pulse">智谱 AI 思考中...</p>
-                        </div>
-                        <textarea id="outputArea" readonly class="w-full h-full bg-[#0f172a] text-slate-300 p-3 rounded border border-slate-600 font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 absolute inset-0"></textarea>
-                    </div>
-                    <div id="copyToast" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white px-3 py-1 rounded text-xs shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-30">
-                        已复制！
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Modal (Code Preview) -->
-    <div id="codeModal" class="fixed inset-0 bg-black/70 z-[100] hidden flex items-center justify-center p-4">
-        <div class="bg-[#1e293b] w-full max-w-2xl max-h-[70vh] rounded-xl shadow-2xl flex flex-col border border-slate-600">
-            <div class="p-3 border-b border-slate-600 flex justify-between items-center">
-                <h3 class="text-white font-bold text-sm">✨ 智谱生成 GAS 预览</h3>
-                <button id="closeModal" class="text-slate-400 hover:text-white transition-colors text-xl">×</button>
-            </div>
-            <div class="p-4 overflow-auto flex-grow bg-[#0f172a]">
-                <pre id="codeContent" class="text-emerald-400 font-mono text-[10px] leading-tight whitespace-pre-wrap"></pre>
-            </div>
-            <div class="p-3 border-t border-slate-600 flex justify-between items-center">
-                <span class="text-[10px] text-slate-400 italic">部署至 Google Apps Script 后请务必测试。</span>
-                <button id="copyCode" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold">复制代码</button>
-            </div>
-        </div>
-    </div>
-
-    <footer class="text-slate-400 py-6 text-center text-[10px] opacity-70">
-        <p>Powered by Zhipu AI (GLM-4) · Smart Automation Workspace</p>
-    </footer>
-
-    <script>
-        /**
-         * GitHub Secret 注入说明:
-         * 1. 这里的占位符是 __ZHIPU_API_KEY_PLACEHOLDER__
-         * 2. 在 GitHub Actions 中，使用 sed 替换这个占位符为 ${{ secrets.ZHIPU_API_KEY }}
-         */
-        const GITHUB_INJECTED_KEY = "__ZHIPU_API_KEY_PLACEHOLDER__";
+        // Initialize App
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
         
-        // 优先顺序: 1. GitHub 注入 (如果不是占位符) -> 2. 本地存储 -> 3. 空
-        let currentKey = (GITHUB_INJECTED_KEY !== "__ZHIPU_API_KEY_PLACEHOLDER__") 
-                         ? GITHUB_INJECTED_KEY 
-                         : localStorage.getItem('zhipu_api_key') || "";
+        // Refresh icons periodically
+        setInterval(() => {
+            if (window.lucide) window.lucide.createIcons();
+        }, 800);
 
-        function updateKeyStatus() {
-            const statusDot = document.getElementById('keyStatus');
-            const keyIcon = document.getElementById('keySourceIcon');
-            
-            if (currentKey && currentKey.length > 10 && currentKey !== "__ZHIPU_API_KEY_PLACEHOLDER__") {
-                statusDot.classList.replace('bg-red-400', 'bg-green-400');
-                if (GITHUB_INJECTED_KEY === currentKey) {
-                    statusDot.title = "GitHub Actions 自动注入成功";
-                    keyIcon.innerText = "☁️"; // 云端自动加载
-                    keyIcon.title = "已从 GitHub 安全加载";
-                } else {
-                    statusDot.title = "本地浏览器存储加载";
-                    keyIcon.innerText = "💾";
-                }
-            } else {
-                statusDot.classList.replace('bg-green-400', 'bg-red-400');
-                statusDot.title = "未检测到有效 Key";
-                keyIcon.innerText = "🔒";
-            }
-        }
-
-        async function callZhipu(prompt, systemInstruction = "", isJson = false) {
-            if (!currentKey || currentKey === "__ZHIPU_API_KEY_PLACEHOLDER__") {
-                showToast("错误: 未配置 API Key。请在页眉输入或通过 GitHub 自动注入", "bg-red-500");
-                throw new Error("Missing API Key");
-            }
-
-            const endpoint = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-            const messages = [];
-            if (systemInstruction) messages.push({ role: "system", content: systemInstruction });
-            messages.push({ role: "user", content: prompt });
-
-            const payload = {
-                model: "glm-4-flash",
-                messages: messages,
-                temperature: 0.7,
-                top_p: 0.9,
-                ...(isJson ? { response_format: { type: "json_object" } } : {})
-            };
-
-            let delay = 1000;
-            for (let i = 0; i < 3; i++) {
-                try {
-                    const response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${currentKey}`
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    if (!response.ok) {
-                        const errBody = await response.json();
-                        throw new Error(errBody.error?.message || `HTTP ${response.status}`);
-                    }
-                    const result = await response.json();
-                    return result.choices[0].message.content;
-                } catch (err) {
-                    if (i === 2) {
-                        showToast(`智谱 API 错误: ${err.message}`, "bg-red-500");
-                        throw err;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    delay *= 2;
-                }
-            }
-        }
-
-        function showToast(msg, colorClass = "bg-green-500") {
-            const toast = document.getElementById('copyToast');
-            const originalClass = toast.className;
-            toast.innerText = msg;
-            toast.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white px-4 py-2 rounded text-xs shadow-lg transition-opacity duration-300 z-30 ${colorClass}`;
-            toast.classList.remove('opacity-0');
-            setTimeout(() => {
-                toast.classList.add('opacity-0');
-                setTimeout(() => { toast.className = originalClass; }, 300);
-            }, 3000);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const templateTypeSelect = document.getElementById('templateType');
-            const generalFields = document.getElementById('generalFields');
-            const advancedFields = document.getElementById('advancedFields');
-            const outputArea = document.getElementById('outputArea');
-            const copyBtn = document.getElementById('copyBtn');
-            const magicFillBtn = document.getElementById('magicFillBtn');
-            const optimizeBtn = document.getElementById('optimizeBtn');
-            const previewCodeBtn = document.getElementById('previewCodeBtn');
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            const codeModal = document.getElementById('codeModal');
-            const codeContent = document.getElementById('codeContent');
-            const aiInput = document.getElementById('aiInput');
-            const userApiKeyInput = document.getElementById('userApiKey');
-
-            // Init Key UI
-            if (currentKey !== "__ZHIPU_API_KEY_PLACEHOLDER__") {
-                userApiKeyInput.value = currentKey;
-            }
-            updateKeyStatus();
-
-            userApiKeyInput.addEventListener('change', (e) => {
-                currentKey = e.target.value.trim();
-                localStorage.setItem('zhipu_api_key', currentKey);
-                updateKeyStatus();
-                showToast("Key 已保存");
-            });
-
-            function updateVisibility() {
-                if (templateTypeSelect.value === 'general') {
-                    generalFields.classList.remove('hidden');
-                    advancedFields.classList.add('hidden');
-                } else {
-                    generalFields.classList.add('hidden');
-                    advancedFields.classList.remove('hidden');
-                }
-                generatePrompt();
-            }
-
-            function generatePrompt() {
-                const type = templateTypeSelect.value;
-                let prompt = "";
-
-                if (type === 'general') {
-                    const t = document.getElementById('gTrigger').value || '[源]';
-                    const k = document.getElementById('gKeyword').value || '[词]';
-                    const f = document.getElementById('gFormat').value || '[格式]';
-                    const s = document.getElementById('gSheet').value || '[表]';
-                    const mc = document.getElementById('gMatchCol').value || '[列]';
-                    const d = document.getElementById('gDict').value || '[字典]';
-                    const p = document.getElementById('gPrefix').value || '[前缀]';
-                    const c = document.getElementById('gCC').value || '[抄送]';
-
-                    prompt = `[角色] 资深 GAS 开发专家
-[目标] 脚本自动化流程：
-1. 在 ${t} 搜索 "${k}"。读取附件 ${f}。
-2. 写入 Sheet "${s}"，记录时间戳。
-3. 对比 "${mc}"。去 "${d}" 查找负责人邮箱。
-4. 发送邮件。主题：${p} - {{${mc}}}。抄送：${c}。列出明细。
-5. 无数据则停止。`;
-                } else {
-                    const s = document.getElementById('aSource').value || '[源]';
-                    const tc = document.getElementById('aTrimCol').value || '[列]';
-                    const fs = document.getElementById('aFilterStatus').value || '[状态]';
-                    const d = document.getElementById('aDays').value || '[N]';
-                    const ac = document.getElementById('aAggCol').value || '[维度]';
-                    const ti = document.getElementById('aTime').value || '[时间]';
-
-                    prompt = `[任务] 编写自动化脚本。
-[逻辑]
-- 监控 ${s}。
-- 清洗："${tc}" 去空格，过滤状态为 "${fs}"，保留近 ${d} 天。
-- 聚合反馈：按 "${ac}" 汇总，${ti} 发送简报。`;
-                }
-
-                let tips = "";
-                if(document.getElementById('tipEncoding').checked) tips += "\n- 识别 UTF-8。";
-                if(document.getElementById('tipAuth').checked) tips += "\n- 提示手动运行授权。";
-                if(document.getElementById('tipIdempotent').checked) tips += "\n- 检查重复项。";
-               
-                outputArea.value = prompt + (tips ? `\n\n[防御性要求]${tips}` : "");
-            }
-
-            magicFillBtn.addEventListener('click', async () => {
-                const userReq = aiInput.value.trim();
-                if (!userReq) return;
-                loadingOverlay.classList.remove('hidden');
-                
-                const sysInstruction = `你是一个需求解析专家。请将用户的自然语言需求映射到以下 JSON 结构中。
-                JSON 结构：{
-                    "type": "general" 或 "advanced",
-                    "gTrigger": "...", "gKeyword": "...", "gFormat": "...", "gSheet": "...", "gMatchCol": "...", "gDict": "...", "gPrefix": "...", "gCC": "...",
-                    "aSource": "...", "aTrimCol": "...", "aFilterStatus": "...", "aDays": 30, "aAggCol": "...", "aTime": "..."
-                }
-                只返回纯 JSON，不要有任何 Markdown 包裹。`;
-
-                try {
-                    const result = await callZhipu(userReq, sysInstruction, true);
-                    const data = JSON.parse(result);
-                    if (data.type) templateTypeSelect.value = data.type;
-                    updateVisibility();
-                    Object.keys(data).forEach(k => { 
-                        const el = document.getElementById(k);
-                        if (el) el.value = data[k]; 
-                    });
-                    generatePrompt();
-                } catch (e) { 
-                    console.error(e); 
-                    showToast("解析失败，请检查输入或 Key", "bg-red-500");
-                } finally { loadingOverlay.classList.add('hidden'); }
-            });
-
-            optimizeBtn.addEventListener('click', async () => {
-                loadingOverlay.classList.remove('hidden');
-                try {
-                    const res = await callZhipu(outputArea.value, "你是一个提示词专家。润色并优化此脚本开发 Prompt，使其更专业，保持 5-P 结构。");
-                    outputArea.value = res;
-                } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
-            });
-
-            previewCodeBtn.addEventListener('click', async () => {
-                loadingOverlay.classList.remove('hidden');
-                try {
-                    const res = await callZhipu(outputArea.value, "你是一个 Google Apps Script 开发专家。根据我的指令生成一份完整的、可运行的代码。包含必要的注释说明。");
-                    codeContent.textContent = res;
-                    codeModal.classList.remove('hidden');
-                } catch (e) { console.error(e); } finally { loadingOverlay.classList.add('hidden'); }
-            });
-
-            templateTypeSelect.addEventListener('change', updateVisibility);
-            document.querySelectorAll('#promptForm input, #promptForm select').forEach(i => i.addEventListener('input', generatePrompt));
-            
-            copyBtn.onclick = () => {
-                outputArea.select(); 
-                document.execCommand('copy');
-                showToast("指令已复制");
-            };
-
-            document.getElementById('closeModal').onclick = () => codeModal.classList.add('hidden');
-            document.getElementById('copyCode').onclick = () => {
-                const dummy = document.createElement("textarea"); document.body.appendChild(dummy);
-                dummy.value = codeContent.textContent; dummy.select(); document.execCommand("copy");
-                document.body.removeChild(dummy);
-                document.getElementById('copyCode').innerText = "已复制";
-                setTimeout(() => document.getElementById('copyCode').innerText = "复制代码", 2000);
-            };
-
-            updateVisibility();
-        });
     </script>
 </body>
 </html>
-        });
-    </script>
 </body>
 </html>
