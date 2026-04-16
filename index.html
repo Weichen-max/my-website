@@ -3,464 +3,385 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>财务差旅报销校对系统 - 聚细旅行专用版</title>
-    <!-- Tailwind CSS -->
+    <title>聚细旅行 - 财务报销 AI 智能审计系统 v2.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- SheetJS (XLSX) -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans SC', sans-serif; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .status-badge { transition: all 0.3s ease; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .status-badge { transition: all 0.2s ease; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+        .animate-shake { animation: shake 0.2s ease-in-out infinite; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useMemo } = React;
 
-        // 智谱 AI 配置
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
         const ZHIPU_API_KEY = "8776cadbc359430cab2d635625ac65fe.3U3GnOC5VU2FfNKo";
-        const ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
+        
+        // 定义有效的购买方名称列表
+        const TARGET_COMPANIES = [
+            "上海飞蚁旅行社有限公司",
+            "上海聚细文化传播有限公司",
+            "上海三志城会务服务有限公司",
+            "上海溪聚商务咨询有限公司"
+        ];
 
         const App = () => {
-            const [headerInfo, setHeaderInfo] = useState({ person: '', date: '', company: '' });
             const [reimbursementData, setReimbursementData] = useState([]);
             const [invoiceFiles, setInvoiceFiles] = useState([]);
             const [isProcessing, setIsProcessing] = useState(false);
             const [results, setResults] = useState([]);
             const [logs, setLogs] = useState([]);
+            const [header, setHeader] = useState({ name: '', company: '' });
             const [activeTab, setActiveTab] = useState('all');
 
-            const addLog = (msg) => {
-                setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
+            const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
+
+            // PDF 转图片
+            const convertPdfToImage = async (file) => {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const page = await pdf.getPage(1);
+                const viewport = page.getViewport({ scale: 2.0 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                return canvas.toDataURL('image/jpeg', 0.9);
             };
 
-            // 针对用户上传的模板优化的 Excel 解析逻辑
-            const handleExcelUpload = (e) => {
+            // 解析 Excel
+            const handleExcel = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-
                 const reader = new FileReader();
                 reader.onload = (evt) => {
-                    const data = evt.target.result;
-                    const workbook = XLSX.read(data, { type: 'binary' });
-                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const workbook = XLSX.read(evt.target.result, { type: 'binary' });
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
                     
-                    // 将表格转为二维数组处理，因为模板上方有 metadata
-                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                    
-                    // 1. 提取抬头信息 (报销人、日期等)
-                    let person = "", date = "", company = "";
-                    rows.forEach(row => {
-                        const rowStr = row.join(',');
-                        if (rowStr.includes('报销人：')) person = row[row.indexOf('报销人：') + 2] || '';
-                        if (rowStr.includes('报销日期：')) date = row[row.indexOf('报销日期：') + 1] || '';
-                        if (rowStr.includes('付款公司：')) company = row[row.indexOf('付款公司：') + 1] || '';
+                    let dataStart = -1, amtCol = -1;
+                    rows.forEach((row, i) => {
+                        if (row.includes('序号') && row.includes('报销金额')) { dataStart = i; amtCol = row.indexOf('报销金额'); }
+                        const s = row.join(',');
+                        if (s.includes('报销人：')) setHeader(h => ({...h, name: row[row.indexOf('报销人：') + 2]}));
+                        if (s.includes('付款公司：')) setHeader(h => ({...h, company: row[row.indexOf('付款公司：') + 1]}));
                     });
-                    setHeaderInfo({ person, date, company });
 
-                    // 2. 定位数据行 (寻找包含“序号”或“报销项目”的行)
-                    let headerRowIndex = -1;
-                    for(let i=0; i<rows.length; i++) {
-                        if(rows[i].includes('序号') && rows[i].includes('报销金额')) {
-                            headerRowIndex = i;
-                            break;
-                        }
-                    }
+                    if (dataStart === -1) return alert("未找到报销明细行，请检查模板格式。");
 
-                    if (headerRowIndex === -1) {
-                        alert("未识别到标准报销单格式，请检查 Excel 模板是否正确。");
-                        return;
-                    }
-
-                    const headers = rows[headerRowIndex];
-                    const colMap = {
-                        index: headers.indexOf('序号'),
-                        category: headers.indexOf('报销项目'),
-                        summary: headers.indexOf('摘要'),
-                        type: headers.indexOf('发票类型（专/普）'),
-                        amount: headers.indexOf('报销金额'),
-                        hasInvoice: headers.indexOf('是否有发票')
-                    };
-
-                    // 3. 提取并清洗数据
-                    const dataRows = rows.slice(headerRowIndex + 1);
                     const formatted = [];
-                    let lastCategory = "";
-
-                    for (let row of dataRows) {
-                        const amount = parseFloat(row[colMap.amount]);
-                        const summary = row[colMap.summary];
-                        
-                        // 遇到“合计”行则停止
-                        if (row.join('').includes('合    计') || row.join('').includes('合计')) break;
-                        
-                        // 如果金额无效或是空行则跳过
-                        if (isNaN(amount) || !summary) continue;
-
-                        // 处理合并单元格逻辑：如果项目为空，沿用上一行的项目
-                        const currentCategory = row[colMap.category] || lastCategory;
-                        lastCategory = currentCategory;
-
-                        formatted.push({
-                            id: `row-${formatted.length}`,
-                            category: currentCategory,
-                            summary: summary,
-                            type: row[colMap.type] || '无',
-                            amount: amount,
-                            hasInvoice: row[colMap.hasInvoice] || '否',
-                            status: 'pending'
-                        });
-                    }
-                    
+                    let lastProj = "";
+                    rows.slice(dataStart + 1).forEach(row => {
+                        const amt = parseFloat(row[amtCol]);
+                        if (isNaN(amt) || row.join('').includes('合计')) return;
+                        if (row[1]) lastProj = row[1];
+                        formatted.push({ project: lastProj, desc: row[2], amount: amt, status: 'pending' });
+                    });
                     setReimbursementData(formatted);
-                    addLog(`Excel 导入成功: 已识别 ${formatted.length} 条有效报销项。报销人: ${person}`);
+                    addLog(`Excel 载入成功：共 ${formatted.length} 条明细`);
                 };
                 reader.readAsBinaryString(file);
             };
 
-            const handleImageUpload = (e) => {
-                const files = Array.from(e.target.files);
-                const newInvoices = files.map(file => ({
+            const handleFiles = (e) => {
+                const files = Array.from(e.target.files).map(f => ({
                     id: Math.random().toString(36).substr(2, 9),
-                    file,
-                    preview: URL.createObjectURL(file),
+                    file: f,
+                    name: f.name,
+                    isPdf: f.type === 'application/pdf',
+                    preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
                     status: 'waiting',
-                    aiResult: null
+                    aiData: null
                 }));
-                setInvoiceFiles(prev => [...prev, ...newInvoices]);
-                addLog(`图片添加: 成功载入 ${files.length} 张发票图片。`);
+                setInvoiceFiles(prev => [...prev, ...files]);
+                addLog(`载入了 ${files.length} 个票据文件`);
             };
 
-            const recognizeInvoice = async (invoice) => {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = async () => {
-                        const base64Image = reader.result.split(',')[1];
-                        try {
-                            const response = await fetch(ZHIPU_API_URL, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${ZHIPU_API_KEY}`
-                                },
-                                body: JSON.stringify({
-                                    model: "glm-4v",
-                                    messages: [
+            // AI 识别逻辑
+            const callAi = async (imageBase64) => {
+                try {
+                    const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ZHIPU_API_KEY}` },
+                        body: JSON.stringify({
+                            model: "glm-4v",
+                            messages: [{
+                                role: "user",
+                                content: [
+                                    { type: "text", text: `请识别这张发票内容。输出 JSON 格式（严禁带 Markdown 代码块标记），字段如下：
                                         {
-                                            role: "user",
-                                            content: [
-                                                { type: "text", text: "识别这张发票。输出 JSON 格式（只输出 JSON），包含字段：amount(数字), date(YYYY-MM-DD), type(类型)。" },
-                                                { type: "image_url", image_url: { url: base64Image } }
-                                            ]
-                                        }
-                                    ]
-                                })
-                            });
-                            const res = await response.json();
-                            const content = res.choices[0].message.content;
-                            const jsonMatch = content.match(/\{.*\}/s);
-                            const data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-                            resolve(data);
-                        } catch (err) {
-                            resolve(null);
-                        }
-                    };
-                    reader.readAsDataURL(invoice.file);
-                });
+                                            "amount": 数字(总金额),
+                                            "buyerName": "购买方名称/抬头",
+                                            "invoiceNumber": "发票号码",
+                                            "date": "YYYY-MM-DD"
+                                        }` 
+                                    },
+                                    { type: "image_url", image_url: { url: imageBase64.split(',')[1] } }
+                                ]
+                            }]
+                        })
+                    });
+                    const res = await response.json();
+                    const content = res.choices[0].message.content;
+                    const match = content.match(/\{.*\}/s);
+                    return match ? JSON.parse(match[0]) : null;
+                } catch (e) {
+                    return null;
+                }
             };
 
             const startAudit = async () => {
-                if (!reimbursementData.length || !invoiceFiles.length) {
-                    alert("请先上传 Excel 报销单和发票照片");
-                    return;
-                }
-
+                if (!reimbursementData.length || !invoiceFiles.length) return alert("请先上传 Excel 和 票据文件");
                 setIsProcessing(true);
-                addLog("启动 AI 校对流程...");
+                addLog("开始 AI 智能审计与合规检查...");
 
-                const processedInvoices = [];
-                const tempInvoices = [...invoiceFiles];
+                const currentFiles = [...invoiceFiles];
+                const invoiceNumbers = new Set(); // 用于检查单次审计内的重复
 
-                for (let i = 0; i < tempInvoices.length; i++) {
-                    tempInvoices[i].status = 'processing';
-                    setInvoiceFiles([...tempInvoices]);
-                    addLog(`AI 正在解析第 ${i+1}/${tempInvoices.length} 张图片...`);
+                for (let i = 0; i < currentFiles.length; i++) {
+                    const item = currentFiles[i];
+                    item.status = 'processing';
+                    setInvoiceFiles([...currentFiles]);
+
+                    let base64 = "";
+                    if (item.isPdf) {
+                        addLog(`转换 PDF: ${item.name}...`);
+                        base64 = await convertPdfToImage(item.file);
+                    } else {
+                        base64 = await new Promise(r => {
+                            const rd = new FileReader();
+                            rd.onload = e => r(e.target.result);
+                            rd.readAsDataURL(item.file);
+                        });
+                    }
+
+                    addLog(`AI 正在解析: ${item.name}...`);
+                    const aiResult = await callAi(base64);
                     
-                    const aiData = await recognizeInvoice(tempInvoices[i]);
-                    tempInvoices[i].aiResult = aiData;
-                    tempInvoices[i].status = 'done';
-                    processedInvoices.push(aiData);
-                    setInvoiceFiles([...tempInvoices]);
+                    if (aiResult) {
+                        // 校验抬头：必须在定义的四个名称之中
+                        aiResult.isHeaderOk = TARGET_COMPANIES.includes(aiResult.buyerName);
+                        
+                        // 校验单号重复
+                        aiResult.isDuplicate = invoiceNumbers.has(aiResult.invoiceNumber);
+                        if (aiResult.invoiceNumber) invoiceNumbers.add(aiResult.invoiceNumber);
+                        
+                        item.aiData = aiResult;
+                        addLog(`识别完成: ¥${aiResult.amount} | 抬头: ${aiResult.isHeaderOk ? '正确' : '错误'} | 单号: ${aiResult.invoiceNumber || '未知'}`);
+                    }
+
+                    item.status = 'done';
+                    setInvoiceFiles([...currentFiles]);
                 }
 
-                addLog("正在比对报销单与发票金额...");
-                const auditResults = reimbursementData.map(item => {
-                    // 核心匹配逻辑：金额允许 0.1 元以内的误差
-                    const matchedInvoice = processedInvoices.find(inv => inv && Math.abs(inv.amount - item.amount) < 0.1);
-                    return {
-                        ...item,
-                        status: matchedInvoice ? 'ok' : 'missing'
-                    };
+                // 最终对账比对逻辑
+                const final = reimbursementData.map(row => {
+                    const match = currentFiles.find(f => f.aiData && Math.abs(f.aiData.amount - row.amount) < 1);
+                    
+                    let auditStatus = 'missing';
+                    let note = "未找到对应发票";
+
+                    if (match) {
+                        if (!match.aiData.isHeaderOk) {
+                            auditStatus = 'error_header';
+                            note = `抬头异常: ${match.aiData.buyerName || '未识别到抬头'}`;
+                        } else if (match.aiData.isDuplicate) {
+                            auditStatus = 'error_duplicate';
+                            note = `发票重复提交 (单号: ${match.aiData.invoiceNumber})`;
+                        } else {
+                            auditStatus = 'ok';
+                            note = `匹配成功 (单号: ${match.aiData.invoiceNumber})`;
+                        }
+                    }
+
+                    return { ...row, status: auditStatus, note };
                 });
 
-                setResults(auditResults);
+                setResults(final);
                 setIsProcessing(false);
-                addLog("校对任务全部完成！");
+                addLog("审计完成！多抬头合规性已校验。");
             };
 
-            const filteredResults = results.length > 0 
-                ? (activeTab === 'all' ? results : results.filter(r => r.status === activeTab))
-                : reimbursementData;
-
             return (
-                <div className="min-h-screen p-4 md:p-8">
-                    <div className="max-w-7xl mx-auto">
-                        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                <div className="min-h-screen pb-10">
+                    {/* Header */}
+                    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+                        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="flex items-center gap-4">
-                                <div className="p-4 bg-indigo-600 rounded-2xl text-white shadow-indigo-200 shadow-xl">
-                                    <i data-lucide="file-check-2" className="w-8 h-8"></i>
+                                <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg">
+                                    <i data-lucide="shield-check"></i>
                                 </div>
                                 <div>
-                                    <h1 className="text-2xl font-bold text-slate-800 tracking-tight">聚细旅行财务校对系统</h1>
-                                    <div className="flex gap-4 mt-1 text-xs text-slate-500 font-medium">
-                                        <span className="flex items-center gap-1"><i data-lucide="user" className="w-3 h-3"></i> 报销人: {headerInfo.person || '-'}</span>
-                                        <span className="flex items-center gap-1"><i data-lucide="calendar" className="w-3 h-3"></i> 日期: {headerInfo.date || '-'}</span>
-                                        <span className="flex items-center gap-1"><i data-lucide="building" className="w-3 h-3"></i> 付款方: {headerInfo.company || '-'}</span>
+                                    <h1 className="text-xl font-black text-slate-800 tracking-tight italic">JUXI CULTURE <span className="text-indigo-600">AUDIT</span></h1>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
+                                        <span>User: {header.name || 'N/A'}</span>
+                                        <span>Company: {header.company || 'N/A'}</span>
+                                        <span className="text-indigo-500">支持 4 家关联公司抬头校验</span>
                                     </div>
                                 </div>
                             </div>
                             <div className="flex gap-3">
+                                <button onClick={() => window.location.reload()} className="px-6 py-2.5 text-xs font-bold text-slate-400 hover:bg-slate-50 rounded-xl transition-all">重置系统</button>
                                 <button 
-                                    onClick={() => {setReimbursementData([]); setInvoiceFiles([]); setResults([]); setLogs([]);}}
-                                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-all"
-                                >
-                                    重置
-                                </button>
-                                <button 
-                                    onClick={startAudit}
+                                    onClick={startAudit} 
                                     disabled={isProcessing}
-                                    className={`px-8 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 ${
-                                        isProcessing ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100'
+                                    className={`px-10 py-2.5 rounded-xl font-black text-xs text-white shadow-xl transition-all active:scale-95 ${
+                                        isProcessing ? 'bg-slate-300' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
                                     }`}
                                 >
-                                    {isProcessing ? <><i data-lucide="loader-2" className="animate-spin w-4 h-4"></i> 系统校对中...</> : <><i data-lucide="sparkles" className="w-4 h-4"></i> 开始 AI 审计</>}
+                                    {isProcessing ? "智能审计分析中..." : "开始全量审计"}
                                 </button>
                             </div>
-                        </header>
+                        </div>
+                    </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            {/* 文件上传侧边栏 */}
-                            <div className="lg:col-span-4 space-y-6">
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                        <i data-lucide="file-spreadsheet" className="w-16 h-16"></i>
-                                    </div>
-                                    <h3 className="font-bold flex items-center gap-2 mb-4 text-slate-700">
-                                        <span className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">1</span>
-                                        上传报销单 Excel
-                                    </h3>
-                                    <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer">
-                                        <input type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                        <i data-lucide="upload-cloud" className="mx-auto text-slate-400 mb-2"></i>
-                                        <p className="text-xs text-slate-500">点击上传聚细专用报销模板</p>
-                                        {reimbursementData.length > 0 && <p className="mt-3 text-green-600 font-bold text-sm">已加载 {reimbursementData.length} 项</p>}
-                                    </div>
-                                </div>
+                    <main className="max-w-7xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* Control Panel */}
+                        <div className="lg:col-span-4 space-y-6">
+                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                                <h3 className="font-bold text-sm text-slate-700 flex items-center gap-2 mb-4"><i data-lucide="file-spreadsheet" className="text-green-500 w-4 h-4"></i> 1. 上传报销明细 (Excel)</h3>
+                                <input type="file" accept=".xlsx" onChange={handleExcel} className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
+                            </div>
 
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                        <i data-lucide="images" className="w-16 h-16"></i>
-                                    </div>
-                                    <h3 className="font-bold flex items-center gap-2 mb-4 text-slate-700">
-                                        <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">2</span>
-                                        批量上传发票
-                                    </h3>
-                                    <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer mb-4">
-                                        <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                        <i data-lucide="plus-circle" className="mx-auto text-slate-400 mb-2"></i>
-                                        <p className="text-xs text-slate-500">支持拖入多张发票照片</p>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-4 gap-3 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                                        {invoiceFiles.map(inv => (
-                                            <div key={inv.id} className="relative aspect-square rounded-xl overflow-hidden border border-slate-100 group shadow-sm">
-                                                <img src={inv.preview} className="w-full h-full object-cover" />
-                                                {inv.status === 'processing' && (
-                                                    <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center">
-                                                        <i data-lucide="refresh-cw" className="animate-spin text-indigo-600 w-5 h-5"></i>
-                                                    </div>
-                                                )}
-                                                {inv.status === 'done' && (
-                                                    <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full p-0.5 shadow-md">
-                                                        <i data-lucide="check" className="w-3 h-3"></i>
-                                                    </div>
-                                                )}
-                                                <button 
-                                                    onClick={() => setInvoiceFiles(f => f.filter(x => x.id !== inv.id))}
-                                                    className="absolute inset-0 bg-red-500/90 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                >
-                                                    <i data-lucide="trash-2" className="w-5 h-5"></i>
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-900 text-slate-400 p-5 rounded-3xl text-[11px] font-mono h-52 overflow-y-auto custom-scrollbar shadow-xl border border-slate-800">
-                                    <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
-                                        <span className="text-indigo-400 font-bold uppercase tracking-widest flex items-center gap-2">
-                                            <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
-                                            Audit Console
-                                        </span>
-                                        <span className="text-slate-600">v1.2.0</span>
-                                    </div>
-                                    {logs.map((l, i) => <div key={i} className="mb-2 leading-relaxed opacity-90"><span className="text-slate-600">>></span> {l}</div>)}
-                                    {logs.length === 0 && <div className="text-slate-700 italic flex items-center justify-center h-24">等待用户操作...</div>}
+                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                                <h3 className="font-bold text-sm text-slate-700 flex items-center gap-2 mb-4"><i data-lucide="file-image" className="text-indigo-500 w-4 h-4"></i> 2. 上传票据 (PDF/图片)</h3>
+                                <input type="file" multiple accept="image/*,application/pdf" onChange={handleFiles} className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
+                                <div className="grid grid-cols-4 gap-3 mt-4 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                    {invoiceFiles.map(f => (
+                                        <div key={f.id} className="relative aspect-square rounded-xl bg-slate-50 border border-slate-100 overflow-hidden group">
+                                            {f.isPdf ? <div className="w-full h-full flex items-center justify-center text-red-400"><i data-lucide="file-text"></i></div> : <img src={f.preview} className="w-full h-full object-cover" />}
+                                            {f.status === 'processing' && <div className="absolute inset-0 bg-white/80 flex items-center justify-center"><i data-lucide="refresh-cw" className="animate-spin w-4 h-4 text-indigo-600"></i></div>}
+                                            {f.status === 'done' && <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full p-0.5"><i data-lucide="check" className="w-2.5 h-2.5"></i></div>}
+                                            <button onClick={() => setInvoiceFiles(p => p.filter(x => x.id !== f.id))} className="absolute inset-0 bg-red-500 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* 对账主视图 */}
-                            <div className="lg:col-span-8">
-                                <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[760px]">
-                                    <div className="p-6 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white sticky top-0 z-10 gap-4">
-                                        <div>
-                                            <h3 className="font-extrabold text-xl text-slate-800">报销项目审计清单</h3>
-                                            <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">Audit Detail List</p>
-                                        </div>
-                                        <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                                            {[
-                                                {id:'all', label: '全部'},
-                                                {id:'ok', label: '已匹配'},
-                                                {id:'missing', label: '发票缺失'}
-                                            ].map(tab => (
-                                                <button 
-                                                    key={tab.id}
-                                                    onClick={() => setActiveTab(tab.id)}
-                                                    className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${
-                                                        activeTab === tab.id ? 'bg-white text-indigo-600 shadow-md scale-[1.02]' : 'text-slate-400 hover:text-slate-600'
-                                                    }`}
-                                                >
-                                                    {tab.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                            <div className="bg-slate-900 rounded-3xl p-5 h-48 overflow-y-auto custom-scrollbar shadow-xl">
+                                <div className="text-[10px] font-black text-indigo-400 mb-3 tracking-widest flex items-center gap-2 uppercase">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Security Console
+                                </div>
+                                {logs.map((l, i) => <div key={i} className="text-[10px] text-slate-500 font-mono mb-1 leading-relaxed leading-4"><span className="text-slate-700">[{i}]</span> {l}</div>)}
+                                {logs.length === 0 && <div className="text-slate-800 text-center py-10 text-[10px] font-bold italic tracking-wider">WAITING FOR ACTION...</div>}
+                            </div>
+                        </div>
 
-                                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                        <table className="w-full text-left border-separate border-spacing-0">
-                                            <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-bold tracking-widest sticky top-0 z-20 backdrop-blur-md">
-                                                <tr>
-                                                    <th className="px-8 py-5 border-b border-slate-100">审计状态</th>
-                                                    <th className="px-6 py-5 border-b border-slate-100">类别 / 摘要</th>
-                                                    <th className="px-6 py-5 border-b border-slate-100 text-right">报销金额</th>
-                                                    <th className="px-6 py-5 border-b border-slate-100">发票类型</th>
-                                                    <th className="px-8 py-5 border-b border-slate-100">系统建议</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {filteredResults.map((item, idx) => (
-                                                    <tr key={idx} className="group hover:bg-slate-50/80 transition-all">
-                                                        <td className="px-8 py-6">
-                                                            {item.status === 'ok' ? (
-                                                                <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 w-fit px-3 py-1.5 rounded-full border border-emerald-100">
-                                                                    <i data-lucide="check-circle" className="w-4 h-4"></i> OK
-                                                                </div>
-                                                            ) : item.status === 'missing' ? (
-                                                                <div className="flex items-center gap-2 text-rose-500 font-bold text-xs bg-rose-50 w-fit px-3 py-1.5 rounded-full border border-rose-100 animate-pulse">
-                                                                    <i data-lucide="alert-octagon" className="w-4 h-4"></i> 缺失
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs bg-slate-50 w-fit px-3 py-1.5 rounded-full border border-slate-100">
-                                                                    <i data-lucide="circle-dashed" className="w-4 h-4"></i> 待校
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-6">
-                                                            <div className="text-[10px] text-indigo-500 font-bold uppercase mb-1">{item.category}</div>
-                                                            <div className="text-sm font-semibold text-slate-700">{item.summary}</div>
-                                                        </td>
-                                                        <td className="px-6 py-6 text-right">
-                                                            <div className="text-base font-mono font-bold text-slate-800">
-                                                                ¥{item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-6">
-                                                            <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${
-                                                                item.type === '普票' ? 'border-blue-100 text-blue-500 bg-blue-50' : 
-                                                                item.type === '专票' ? 'border-orange-100 text-orange-500 bg-orange-50' : 
-                                                                'border-slate-100 text-slate-400 bg-slate-50'
-                                                            }`}>
-                                                                {item.type}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-8 py-6">
-                                                            {item.status === 'ok' ? (
-                                                                <div className="text-xs text-slate-500 flex items-center gap-1">
-                                                                    <i data-lucide="info" className="w-3 h-3"></i> 已发现匹配发票
-                                                                </div>
-                                                            ) : item.status === 'missing' ? (
-                                                                <div className="text-xs text-rose-400 font-medium flex items-center gap-1">
-                                                                    <i data-lucide="x-circle" className="w-3 h-3"></i> 请要求员工补齐票据
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-xs text-slate-300 italic">准备好后点击上方开始审计</div>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                                {reimbursementData.length === 0 && (
-                                                    <tr>
-                                                        <td colSpan="5" className="py-48 text-center">
-                                                            <div className="inline-block p-10 rounded-full bg-slate-50 mb-4">
-                                                                <i data-lucide="inbox" className="w-16 h-16 text-slate-200"></i>
-                                                            </div>
-                                                            <p className="text-slate-400 font-bold tracking-widest uppercase text-sm">Waiting for Data Import</p>
-                                                            <p className="text-slate-300 text-xs mt-2">请先从左侧面板上传 Excel 文件</p>
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
+                        {/* Audit Result View */}
+                        <div className="lg:col-span-8 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[760px]">
+                            <div className="px-8 py-6 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div>
+                                    <h2 className="font-black text-lg text-slate-800 tracking-tight">审计明细结果汇总</h2>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Automated Compliance Review</p>
+                                </div>
+                                <div className="flex bg-slate-100 p-1 rounded-xl">
+                                    {['all', 'ok', 'missing'].map(t => (
+                                        <button key={t} onClick={() => setActiveTab(t)} className={`px-5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all ${activeTab === t ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                                            {t === 'all' ? '全部' : t === 'ok' ? '正常' : '异常'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-slate-50/50 sticky top-0 z-10 backdrop-blur-md">
+                                        <tr>
+                                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">合规状态</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">报销项/摘要</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">报销金额</th>
+                                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">审计说明</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {(results.length > 0 ? (activeTab === 'all' ? results : results.filter(r => r.status === activeTab || (activeTab === 'missing' && r.status.includes('error')))) : reimbursementData).map((item, i) => (
+                                            <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
+                                                <td className="px-8 py-5">
+                                                    {item.status === 'ok' ? (
+                                                        <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full text-[10px] font-black border border-emerald-100 w-fit">
+                                                            <i data-lucide="check-circle" className="w-3.5 h-3.5"></i> OK
+                                                        </div>
+                                                    ) : item.status === 'error_header' ? (
+                                                        <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full text-[10px] font-black border border-amber-100 w-fit animate-shake">
+                                                            <i data-lucide="shield-alert" className="w-3.5 h-3.5"></i> 抬头错误
+                                                        </div>
+                                                    ) : item.status === 'error_duplicate' ? (
+                                                        <div className="flex items-center gap-1.5 text-rose-600 bg-rose-50 px-3 py-1.5 rounded-full text-[10px] font-black border border-rose-100 w-fit animate-shake">
+                                                            <i data-lucide="copy" className="w-3.5 h-3.5"></i> 发票重复
+                                                        </div>
+                                                    ) : item.status === 'missing' ? (
+                                                        <div className="flex items-center gap-1.5 text-rose-500 bg-rose-50 px-3 py-1.5 rounded-full text-[10px] font-black border border-rose-100 w-fit">
+                                                            <i data-lucide="alert-octagon" className="w-3.5 h-3.5"></i> 缺发票
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5 text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full text-[10px] font-black border border-slate-100 w-fit">
+                                                            <i data-lucide="clock" className="w-3.5 h-3.5"></i> 待审计
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div className="text-[10px] font-bold text-indigo-500/70 mb-0.5 uppercase">{item.project}</div>
+                                                    <div className="text-sm font-bold text-slate-700">{item.desc}</div>
+                                                </td>
+                                                <td className="px-6 py-5 text-right font-mono font-bold text-slate-800">
+                                                    ¥{item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                </td>
+                                                <td className={`px-8 py-5 text-[10px] font-bold italic ${item.status.includes('error') ? 'text-rose-400' : 'text-slate-400'}`}>
+                                                    {item.note || '等待 AI 检索票据...'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {reimbursementData.length === 0 && (
+                                            <tr>
+                                                <td colSpan="4" className="py-44 text-center opacity-10">
+                                                    <i data-lucide="layout-grid" className="w-16 h-16 mx-auto mb-4"></i>
+                                                    <p className="text-sm font-black tracking-widest uppercase">No Data Loaded</p>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            {/* Summary Footer */}
+                            <div className="px-8 py-6 bg-slate-900 text-white flex justify-between items-center">
+                                <div className="text-[10px] font-black opacity-50 uppercase tracking-[0.2em]">Security Compliance Final Report</div>
+                                <div className="flex gap-10 items-center">
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-[10px] font-bold opacity-40 uppercase">Total Items</span>
+                                        <span className="text-lg font-black">{reimbursementData.length}</span>
                                     </div>
-                                    <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                                        <div className="text-xs text-slate-400 font-medium">
-                                            共计 {reimbursementData.length} 项费用项
-                                        </div>
-                                        <div className="text-sm font-bold text-slate-800">
-                                            总金额: ¥{reimbursementData.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                        </div>
+                                    <div className="flex flex-col items-end border-l border-slate-700 pl-10">
+                                        <span className="text-[10px] font-bold opacity-40 uppercase">Total Amount</span>
+                                        <span className="text-2xl font-black font-mono tracking-tighter text-indigo-400">¥{reimbursementData.reduce((a,b)=>a+b.amount,0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </main>
                 </div>
             );
         };
 
-        // Initialize App
         const container = document.getElementById('root');
         const root = ReactDOM.createRoot(container);
         root.render(<App />);
         
-        // Refresh icons periodically
-        setInterval(() => {
-            if (window.lucide) window.lucide.createIcons();
-        }, 800);
-
+        setInterval(() => window.lucide && lucide.createIcons(), 1000);
     </script>
 </body>
 </html>
